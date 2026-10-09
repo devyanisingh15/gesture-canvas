@@ -1,0 +1,175 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens taken from the Gesture Canvas Figma Make prototype.
+ * Colors, radii and shadows were sampled from the landing page render;
+ * keep every screen on these tokens rather than raw values.
+ */
+@theme {
+  --font-display: "Fredoka Variable", ui-rounded, system-ui, sans-serif;
+  --font-sans: "Nunito Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-plum-900: #2e1a47;
+  --color-plum-800: #3b2259;
+  --color-plum-700: #4a2d6e;
+  --color-plum-600: #5c4380;
+  --color-plum-500: #6e5f86;
+  --color-plum-400: #8f84a3;
+  --color-plum-300: #b9b0c9;
+
+  --color-violet-50: #f6f2ff;
+  --color-violet-100: #ede6ff;
+  --color-violet-200: #dccfff;
+  --color-violet-300: #c4affc;
+  --color-violet-400: #a585f8;
+  --color-violet-500: #8b5cf6;
+  --color-violet-600: #7a4ae8;
+  --color-violet-700: #6438c9;
+  --color-violet-800: #5230a8;
+
+  --color-pink-100: #fde4ef;
+  --color-pink-200: #fbcde1;
+  --color-pink-300: #f8b4d0;
+  --color-pink-400: #f48fb9;
+  --color-pink-500: #ec6fa3;
+  --color-pink-600: #d9548a;
+
+  --color-sun-100: #fff6d6;
+  --color-sun-200: #fce9a6;
+  --color-sun-300: #f7d768;
+  --color-sun-400: #f5c542;
+  --color-sun-600: #b88a0e;
+
+  --color-mint-50: #ecfbf3;
+  --color-mint-100: #d6f6e4;
+  --color-mint-200: #b4ecce;
+  --color-mint-400: #3dd68c;
+  --color-mint-600: #1f9d5c;
+  --color-mint-700: #17784a;
+
+  --color-teal-50: #e8f8fa;
+  --color-teal-200: #b7e6ee;
+
+  --color-cream-50: #fffdf8;
+  --color-cream-100: #fff8ec;
+  --color-cream-200: #fbf0dc;
+  --color-cream-300: #f1e3c8;
+
+  --color-danger-100: #ffe3e8;
+  --color-danger-400: #f37c8e;
+  --color-danger-500: #e5566c;
+
+  --radius-pill: 9999px;
+  --radius-card: 1.5rem;
+  --radius-tile: 1rem;
+
+  --shadow-clay-violet: 0 4px 0 0 #5b34b5, 0 14px 24px -8px rgb(124 77 219 / 0.55);
+  --shadow-clay-violet-pressed: 0 1px 0 0 #5b34b5, 0 6px 12px -6px rgb(124 77 219 / 0.5);
+  --shadow-clay-cream: 0 4px 0 0 #e7d9f1, 0 12px 22px -10px rgb(74 45 110 / 0.28);
+  --shadow-clay-pink: 0 4px 0 0 #c94a7f, 0 14px 24px -8px rgb(236 111 163 / 0.5);
+  --shadow-clay-sun: 0 4px 0 0 #e2b53a, 0 12px 22px -10px rgb(184 138 14 / 0.4);
+  --shadow-card: 0 1px 0 0 rgb(255 255 255 / 0.9) inset, 0 24px 48px -20px rgb(74 45 110 / 0.3);
+  --shadow-soft: 0 10px 28px -12px rgb(74 45 110 / 0.25);
+  --shadow-header: 0 1px 0 0 rgb(74 45 110 / 0.06), 0 6px 18px -12px rgb(74 45 110 / 0.2);
+
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-pop: pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  --animate-fade-up: fade-up 0.5s ease-out both;
+  --animate-pulse-ring: pulse-ring 1.6s ease-out infinite;
+  --animate-blink: blink 1.2s ease-in-out infinite;
+  --animate-wiggle: wiggle 0.6s ease-in-out;
+  --animate-confetti: confetti 3.2s linear infinite;
+  --animate-scan: scan 2.2s ease-in-out infinite;
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  @keyframes pop {
+    0% { transform: scale(0.6); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes fade-up {
+    0% { transform: translateY(12px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 rgb(139 92 246 / 0.45); }
+    100% { box-shadow: 0 0 0 14px rgb(139 92 246 / 0); }
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  @keyframes wiggle {
+    0%, 100% { transform: rotate(0); }
+    25% { transform: rotate(-6deg); }
+    75% { transform: rotate(6deg); }
+  }
+  @keyframes confetti {
+    0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(110vh) rotate(720deg); opacity: 0.9; }
+  }
+  @keyframes scan {
+    0%, 100% { top: 8%; }
+    50% { top: 88%; }
+  }
+}
+
+@layer base {
+  html {
+    color: var(--color-plum-700);
+    background: #f7f3fb;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    font-family: var(--font-sans);
+    min-height: 100dvh;
+  }
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-violet-300);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Page background: sky -> lavender -> blush, as in the hero. */
+  .bg-canvas-gradient {
+    background:
+      radial-gradient(1200px 600px at 10% 0%, #dcebff 0%, transparent 60%),
+      radial-gradient(900px 600px at 100% 100%, #f6dff0 0%, transparent 60%),
+      linear-gradient(135deg, #e3ecff 0%, #e8e1ff 45%, #f1e2f6 100%);
+  }
+  .bg-section-blush {
+    background: linear-gradient(180deg, #f7eef8 0%, #fbf1f2 100%);
+  }
+  /* Dotted drawing surface used by every canvas. */
+  .bg-dot-grid {
+    background-color: var(--color-cream-50);
+    background-image: radial-gradient(rgb(165 133 248 / 0.45) 1.2px, transparent 1.3px);
+    background-size: 18px 18px;
+  }
+  /* Chunky outlined wordmark letters. */
+  .text-outlined {
+    -webkit-text-stroke: 6px #fff;
+    paint-order: stroke fill;
+    text-shadow: 0 6px 0 rgb(74 45 110 / 0.12), 0 14px 24px rgb(74 45 110 / 0.18);
+  }
+  .underline-sun {
+    text-decoration-line: underline;
+    text-decoration-color: var(--color-sun-400);
+    text-decoration-thickness: 4px;
+    text-underline-offset: 7px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
