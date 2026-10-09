@@ -29,6 +29,8 @@ export const MOCK_ROOM: GameRoom = {
   targetPromptId: "rocket",
 };
 
+const MOCK_EPOCH = Date.UTC(2026, 9, 9, 16, 0, 0);
+
 /** Deterministic pseudo-random generator so mock drawings don't change between renders. */
 function seeded(seed: number): () => number {
   let s = seed;
@@ -48,7 +50,7 @@ export function mockStrokes(promptId: PromptId, seed: number, wobble = 2.2, colo
     points: line.map(([x, y], j) => ({
       x: (x + (rand() - 0.5) * wobble * 2) / 100,
       y: (y + (rand() - 0.5) * wobble * 2) / 100,
-      t: i * 1000 + j * 40,
+      timestamp: MOCK_EPOCH + i * 1000 + j * 40,
     })),
   }));
 }

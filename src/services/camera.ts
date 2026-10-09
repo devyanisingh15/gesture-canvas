@@ -1,6 +1,6 @@
 /** Webcam access. Kept separate from hand tracking and drawing. */
 
-export type CameraErrorKind = "denied" | "not-found" | "in-use" | "unsupported" | "unknown";
+export type CameraErrorKind = "denied" | "not-found" | "in-use" | "disconnected" | "unsupported" | "unknown";
 
 export class CameraError extends Error {
   constructor(

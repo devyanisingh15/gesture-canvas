@@ -1,3 +1,5 @@
+import type { Stroke } from "@/features/drawing/types";
+
 /** Server-authoritative game phases (see the Phase 5 state machine). */
 export const GAME_PHASES = [
   "LOBBY",
@@ -47,19 +49,7 @@ export interface Player {
   connection: ConnectionStatus;
 }
 
-/** A point on the canvas, normalized to 0..1 so drawings render at any size. */
-export interface StrokePoint {
-  x: number;
-  y: number;
-  t: number;
-}
-
-export interface Stroke {
-  id: string;
-  color: string;
-  width: number;
-  points: StrokePoint[];
-}
+export type { Drawing, Point, Stroke } from "@/features/drawing/types";
 
 export interface ScoreBreakdown {
   shapeScore: number;

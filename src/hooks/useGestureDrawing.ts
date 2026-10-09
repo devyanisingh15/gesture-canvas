@@ -1,11 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { Stroke, StrokePoint } from "@/features/game/types";
+import { useCallback, useEffect, useReducer, useRef } from "react";
+import { drawingReducer, initialDrawingState } from "@/features/drawing/drawingReducer";
+import type { Point } from "@/features/drawing/types";
 import type { HandTracking } from "./useHandTracking";
-
-/** Skip points closer than this (canvas fraction) to the previous one. */
-const MIN_POINT_DISTANCE = 0.004;
 
 interface Options {
   enabled: boolean;
@@ -13,23 +11,26 @@ interface Options {
   width?: number;
 }
 
+let strokeCounter = 0;
+const newStrokeId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `stroke-${Date.now()}-${++strokeCounter}`;
+
 /**
- * Turns the index-finger gesture into strokes. A stroke starts when the
- * finger extends and ends when it curls or the hand leaves the frame.
- * Knows nothing about the camera; it only listens to hand-tracking frames.
+ * Turns hand-tracking frames into stroke data:
+ * index finger extended → start or continue a stroke;
+ * finger curled, open hand, or hand gone → end the stroke.
+ * It knows nothing about the camera or the canvas.
  */
-export function useGestureDrawing(tracking: Pick<HandTracking, "subscribe">, { enabled, color = "#8b5cf6", width = 4 }: Options) {
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const current = useRef<Stroke | null>(null);
-  const counter = useRef(0);
-  const startedAt = useRef<number | null>(null);
+export function useGestureDrawing(tracking: Pick<HandTracking, "subscribe">, { enabled, color, width }: Options) {
+  const [state, dispatch] = useReducer(drawingReducer, initialDrawingState);
+  // Mirrors state.activeStrokeId synchronously, since frames arrive faster than renders.
+  const activeRef = useRef<string | null>(null);
   const { subscribe } = tracking;
 
   const endStroke = useCallback(() => {
-    const stroke = current.current;
-    current.current = null;
-    // A single point renders as nothing; drop it.
-    if (stroke && stroke.points.length < 2) setStrokes((s) => s.filter((x) => x.id !== stroke.id));
+    if (!activeRef.current) return;
+    activeRef.current = null;
+    dispatch({ type: "stroke/end" });
   }, []);
 
   useEffect(() => {
@@ -37,37 +38,46 @@ export function useGestureDrawing(tracking: Pick<HandTracking, "subscribe">, { e
       endStroke();
       return;
     }
-    return subscribe((frame) => {
+    const unsubscribe = subscribe((frame) => {
       if (!frame.handDetected || !frame.indexExtended || !frame.indexTip) {
-        if (current.current) endStroke();
+        endStroke();
         return;
       }
-      startedAt.current ??= frame.timestamp;
-      const point: StrokePoint = { x: frame.indexTip.x, y: frame.indexTip.y, t: Math.round(frame.timestamp - startedAt.current) };
-      const stroke = current.current;
-      if (!stroke) {
-        const next: Stroke = { id: `stroke-${++counter.current}`, color, width, points: [point] };
-        current.current = next;
-        setStrokes((s) => [...s, next]);
-        return;
+      const point: Point = {
+        x: frame.indexTip.x,
+        y: frame.indexTip.y,
+        timestamp: Math.round(performance.timeOrigin + frame.timestamp),
+      };
+      if (!activeRef.current) {
+        const id = newStrokeId();
+        activeRef.current = id;
+        dispatch({ type: "stroke/start", id, point, color, width });
+      } else {
+        dispatch({ type: "stroke/continue", point });
       }
-      const last = stroke.points[stroke.points.length - 1]!;
-      if (Math.hypot(point.x - last.x, point.y - last.y) < MIN_POINT_DISTANCE) return;
-      const updated: Stroke = { ...stroke, points: [...stroke.points, point] };
-      current.current = updated;
-      setStrokes((s) => (s.length && s[s.length - 1]!.id === updated.id ? [...s.slice(0, -1), updated] : [...s, updated]));
     });
+    return () => {
+      unsubscribe();
+      endStroke();
+    };
   }, [subscribe, enabled, color, width, endStroke]);
 
   const undo = useCallback(() => {
-    current.current = null;
-    setStrokes((s) => s.slice(0, -1));
+    activeRef.current = null;
+    dispatch({ type: "undo" });
   }, []);
 
   const clear = useCallback(() => {
-    current.current = null;
-    setStrokes([]);
+    activeRef.current = null;
+    dispatch({ type: "clear" });
   }, []);
 
-  return { strokes, undo, clear };
+  return {
+    drawing: state.drawing,
+    strokes: state.drawing.strokes,
+    activeStrokeId: state.activeStrokeId,
+    isDrawing: state.activeStrokeId !== null,
+    undo,
+    clear,
+  };
 }

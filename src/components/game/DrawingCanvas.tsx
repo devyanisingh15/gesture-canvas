@@ -1,10 +1,14 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { StrokeRenderer, type CanvasSize } from "@/features/drawing/renderer";
 import type { Stroke } from "@/features/game/types";
 import { cn } from "@/lib/cn";
 
 interface DrawingCanvasProps {
-  strokes: Stroke[];
-  /** Finger cursor position, normalized 0..1. */
-  cursor?: { x: number; y: number } | null;
+  strokes: readonly Stroke[];
+  /** Stroke still being drawn; redrawn every frame while the rest stay cached. */
+  activeStrokeId?: string | null;
   className?: string;
   label?: string;
   /** Dotted grid surface (true for live drawing, false for thumbnails). */
@@ -13,31 +17,51 @@ interface DrawingCanvasProps {
   children?: React.ReactNode;
 }
 
-function strokePath(stroke: Stroke): string {
-  const pts = stroke.points;
-  if (pts.length === 0) return "";
-  const [first, ...rest] = pts;
-  if (!first) return "";
-  let d = `M${first.x * 100} ${first.y * 100}`;
-  // Quadratic smoothing through midpoints for a hand-drawn line.
-  for (let i = 0; i < rest.length; i++) {
-    const p = rest[i]!;
-    const next = rest[i + 1];
-    if (next) {
-      d += ` Q${p.x * 100} ${p.y * 100} ${((p.x + next.x) / 2) * 100} ${((p.y + next.y) / 2) * 100}`;
-    } else {
-      d += ` L${p.x * 100} ${p.y * 100}`;
-    }
-  }
-  return d;
-}
-
 /**
- * Drawing surface. Phase 1 renders stroke data as SVG; Phase 3 swaps the
- * internals for a DPR-aware <canvas> fed by the finger tracker, keeping
- * this component's props.
+ * Drawing surface. Strokes are vector data (normalized 0..1 points); this
+ * component only renders them to a high-DPI <canvas> sized to its container.
  */
-export function DrawingCanvas({ strokes, cursor, className, label = "Drawing canvas", grid = true, children }: DrawingCanvasProps) {
+export function DrawingCanvas({ strokes, activeStrokeId = null, className, label = "Drawing canvas", grid = true, children }: DrawingCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rendererRef = useRef<StrokeRenderer | null>(null);
+  const [size, setSize] = useState<CanvasSize | null>(null);
+
+  // Track the CSS size and device pixel ratio so the backing store stays sharp.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const measure = () => {
+      const rect = canvas.getBoundingClientRect();
+      const next = { width: rect.width, height: rect.height, dpr: window.devicePixelRatio || 1 };
+      setSize((prev) =>
+        prev && prev.width === next.width && prev.height === next.height && prev.dpr === next.dpr ? prev : next,
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(canvas);
+    // Zooming or moving to another display changes the pixel ratio without a resize.
+    let dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    const onDpr = () => {
+      measure();
+      dprQuery.removeEventListener("change", onDpr);
+      dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      dprQuery.addEventListener("change", onDpr);
+    };
+    dprQuery.addEventListener("change", onDpr);
+    return () => {
+      observer.disconnect();
+      dprQuery.removeEventListener("change", onDpr);
+    };
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !size || size.width === 0) return;
+    rendererRef.current ??= new StrokeRenderer();
+    rendererRef.current.render(canvas, strokes, activeStrokeId, size);
+  }, [strokes, activeStrokeId, size]);
+
   return (
     <div
       role="img"
@@ -50,22 +74,8 @@ export function DrawingCanvas({ strokes, cursor, className, label = "Drawing can
     >
       {/* Square drawing area centered in the surface; stroke and cursor coordinates share it. */}
       <div className="absolute left-1/2 top-[6%] aspect-square h-[88%] -translate-x-1/2">
-      <svg viewBox="0 0 100 100" className="absolute inset-0 size-full" aria-hidden>
-        {strokes.map((s) => (
-          <path
-            key={s.id}
-            d={strokePath(s)}
-            fill="none"
-            stroke={s.color}
-            strokeWidth={s.width}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            vectorEffect="non-scaling-stroke"
-          />
-        ))}
-      </svg>
-      {cursor && <FingerCursor x={cursor.x} y={cursor.y} />}
-      {children}
+        <canvas ref={canvasRef} className="absolute inset-0 size-full" data-stroke-count={strokes.length} />
+        {children}
       </div>
     </div>
   );

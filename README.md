@@ -7,6 +7,8 @@ Done so far:
 - **Phase 1, UI.** Every screen is built from the Figma Make prototype and runs on mock data.
 - **Phase 2, hand tracking.** The drawing screen uses your webcam and MediaPipe hand tracking. Raise your index finger (other fingers curled) to draw; lower it or move your hand out of frame to lift the pen.
 
+- **Phase 3, drawing engine.** Finger strokes are stored as vector data and rendered to a high-DPI `<canvas>` with smoothed curves, undo and clear.
+
 Multiplayer (Supabase) and drawing evaluation come in later phases.
 
 ## Run it
@@ -15,6 +17,7 @@ Multiplayer (Supabase) and drawing evaluation come in later phases.
 npm install
 npm run dev        # http://localhost:3000
 npm run typecheck
+npm test           # unit tests (Vitest)
 npm run build
 ```
 
@@ -66,7 +69,19 @@ src/
 
 Design tokens (colors, fonts, radii, shadows, animations) live in `src/app/globals.css` under `@theme`. Use the tokens rather than raw values.
 
-Strokes are stored as structured data (`{ id, color, width, points: [{ x, y, t }] }`) with coordinates normalized to 0–1, so the same data drives the live canvas, thumbnails and (later) evaluation.
+## Drawing data
+
+The drawing is vector data, separate from the canvas that renders it (`src/features/drawing`):
+
+```ts
+type Point = { x: number; y: number; timestamp: number }; // x, y normalized 0..1; timestamp in epoch ms
+type Stroke = { id: string; points: Point[]; color?: string; width?: number };
+type Drawing = { strokes: Stroke[] };
+```
+
+- `drawingReducer` handles stroke start, continue and end, plus undo and clear. It is pure and unit-tested.
+- `serializeDrawing` / `parseDrawing` convert to and from versioned JSON for saving or sending to the server.
+- `StrokeRenderer` draws strokes onto a canvas sized to its container and device pixel ratio. Finished strokes are cached on an offscreen layer, so each camera frame only redraws the stroke in progress. Because points are normalized, the drawing re-renders exactly at any size.
 
 ## How hand tracking fits together
 

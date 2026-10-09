@@ -47,7 +47,10 @@ export function useHandTracking(videoRef: RefObject<HTMLVideoElement | null>, en
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      setState((s) => (s.status === "idle" && !s.error ? s : { status: "idle", error: null, handDetected: false, indexExtended: false }));
+      return;
+    }
     let cancelled = false;
     let tracker: HandTracker | null = null;
     let rafId = 0;

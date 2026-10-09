@@ -102,7 +102,12 @@ export function DrawScreen() {
             title="Use your index finger to draw"
             onPointerDown={(e) => e.preventDefault()}
           >
-            <DrawingCanvas strokes={drawing.strokes} label={`Your ${prompt.label} drawing`} className="aspect-[16/11]">
+            <DrawingCanvas
+              strokes={drawing.strokes}
+              activeStrokeId={drawing.activeStrokeId}
+              label={`Your ${prompt.label} drawing`}
+              className="aspect-[16/11]"
+            >
               <GestureCursor subscribe={tracking.subscribe} />
             </DrawingCanvas>
           </div>
