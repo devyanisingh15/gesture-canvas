@@ -1,14 +1,14 @@
 import { PromptArt } from "@/components/art/PromptArt";
 import { Avatar } from "@/components/ui/Avatar";
 import { Card } from "@/components/ui/Card";
-import type { DrawingPrompt, Player, PlayerRoundResult } from "@/features/game/types";
+import type { DrawingPrompt, PlayerView, PlayerRoundResult } from "@/features/game/types";
 import { cn } from "@/lib/cn";
 import { AccuracyBadge } from "./AccuracyBadge";
 import { DrawingCanvas } from "./DrawingCanvas";
 import { ScoreBreakdownList } from "./ScoreBreakdownList";
 
 interface ScoreCardProps {
-  player: Player;
+  player: PlayerView;
   prompt: DrawingPrompt;
   result: PlayerRoundResult;
 }
@@ -49,7 +49,7 @@ function Figure({ label, children }: { label: string; children: React.ReactNode 
 }
 
 /** Small thumbnail of another player's drawing with their score. */
-export function DrawingThumb({ player, result, className }: { player: Player; result: PlayerRoundResult; className?: string }) {
+export function DrawingThumb({ player, result, className }: { player: PlayerView; result: PlayerRoundResult; className?: string }) {
   return (
     <div className={cn("rounded-2xl border-2 border-white bg-cream-50 p-2.5 shadow-soft", className)}>
       <DrawingCanvas strokes={result.strokes} label={`${player.name}'s drawing`} className="rounded-xl" />

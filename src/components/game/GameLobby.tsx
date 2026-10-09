@@ -10,15 +10,36 @@ import { EmptySeat, PlayerCard } from "./PlayerCard";
 
 interface GameLobbyProps {
   room: GameRoom;
-  startHref: string;
+  /** Preview: Start Game is a link. */
+  startHref?: string;
+  /** Live: the host starts the game; everyone must be ready. */
+  onStart?: () => void;
+  /** Live: non-hosts toggle their ready state. */
+  onToggleReady?: () => void;
+  /** Seconds until the first round, once the host has started. */
+  startingIn?: number | null;
+  /** Last command error, e.g. "Everyone needs to be ready." */
+  error?: string | null;
 }
 
-export function GameLobby({ room, startHref }: GameLobbyProps) {
+export function GameLobby({ room, startHref, onStart, onToggleReady, startingIn = null, error }: GameLobbyProps) {
   const { players, settings } = room;
   const you = players.find((p) => p.isYou);
   const readyCount = players.filter((p) => p.isReady).length;
-  const canStart = Boolean(you?.isHost) && readyCount >= 2;
+  const online = players.filter((p) => p.connection === "connected");
+  const live = Boolean(onStart);
+  const canStart = live
+    ? Boolean(you?.isHost) && online.length >= 2 && online.every((p) => p.isReady)
+    : Boolean(you?.isHost) && readyCount >= 2;
   const openSeats = Math.max(0, settings.maxPlayers - players.length);
+  const starting = startingIn !== null;
+  const hint = starting
+    ? `Starting in ${startingIn}…`
+    : you?.isHost
+      ? live && online.length >= 2 && !canStart
+        ? "Waiting for everyone to be ready."
+        : "You can start once 2 players are ready."
+      : "Waiting for the host to start.";
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
@@ -57,18 +78,39 @@ export function GameLobby({ room, startHref }: GameLobbyProps) {
           </dl>
         </Card>
         <div className="flex flex-col gap-2">
-          {canStart ? (
-            <Button href={startHref} size="lg" fullWidth iconRight={<Play className="size-4 fill-current" aria-hidden />}>
-              Start Game
+          {live && !you?.isHost && !starting ? (
+            <Button
+              size="lg"
+              fullWidth
+              variant={you?.isReady ? "secondary" : "primary"}
+              onClick={onToggleReady}
+              iconRight={you?.isReady ? undefined : <Check className="size-4" aria-hidden />}
+            >
+              {you?.isReady ? "Not ready" : "I'm ready"}
             </Button>
+          ) : canStart && !starting ? (
+            live || !startHref ? (
+              <Button onClick={onStart} size="lg" fullWidth iconRight={<Play className="size-4 fill-current" aria-hidden />}>
+                Start Game
+              </Button>
+            ) : (
+              <Button href={startHref} size="lg" fullWidth iconRight={<Play className="size-4 fill-current" aria-hidden />}>
+                Start Game
+              </Button>
+            )
           ) : (
             <Button size="lg" fullWidth disabled>
-              Start Game
+              {starting ? "Starting…" : "Start Game"}
             </Button>
           )}
-          <p className="text-center text-xs font-semibold text-plum-400">
-            {you?.isHost ? "You can start once 2 players are ready." : "Waiting for the host to start."}
+          <p aria-live="polite" className="text-center text-xs font-semibold text-plum-400">
+            {hint}
           </p>
+          {error && (
+            <p role="alert" className="text-center text-xs font-bold text-danger-500">
+              {error}
+            </p>
+          )}
         </div>
       </aside>
     </div>

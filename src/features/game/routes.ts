@@ -13,7 +13,6 @@ export const PHASE_ROUTES: Record<GamePhase, string> = {
   TIME_UP: "/game/times-up",
   EVALUATING: "/game/evaluating",
   ROUND_RESULTS: "/game/results",
-  NEXT_ROUND: "/game/wheel",
   FINAL_RESULTS: "/game/final",
 };
 

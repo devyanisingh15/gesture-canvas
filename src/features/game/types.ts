@@ -1,6 +1,6 @@
 import type { Stroke } from "@/features/drawing/types";
 
-/** Server-authoritative game phases (see the Phase 5 state machine). */
+/** Server-authoritative game phases, in order. See features/game/engine/stateMachine.ts. */
 export const GAME_PHASES = [
   "LOBBY",
   "STARTING",
@@ -10,7 +10,6 @@ export const GAME_PHASES = [
   "TIME_UP",
   "EVALUATING",
   "ROUND_RESULTS",
-  "NEXT_ROUND",
   "FINAL_RESULTS",
 ] as const;
 
@@ -39,7 +38,8 @@ export type AvatarColor = "violet" | "pink" | "sun" | "mint" | "sky" | "peach";
 
 export type ConnectionStatus = "connected" | "reconnecting" | "disconnected";
 
-export interface Player {
+/** A player as the UI shows them (relative to the viewer). Engine state lives in engine/types.ts. */
+export interface PlayerView {
   id: string;
   name: string;
   avatar: AvatarColor;
@@ -76,12 +76,12 @@ export interface GameRoom {
   settings: GameSettings;
   currentRound: number;
   phase: GamePhase;
-  players: Player[];
+  players: PlayerView[];
   targetPromptId: PromptId;
 }
 
 export interface LeaderboardEntry {
-  player: Player;
+  player: PlayerView;
   totalScore: number;
   lastRoundScore: number;
   rank: number;

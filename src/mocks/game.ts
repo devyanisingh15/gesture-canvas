@@ -2,7 +2,7 @@ import { PROMPT_ART } from "@/features/game/promptArt";
 import type {
   GameRoom,
   LeaderboardEntry,
-  Player,
+  PlayerView,
   PlayerRoundResult,
   PromptId,
   ScoreBreakdown,
@@ -13,7 +13,7 @@ import type {
  * Mock data for the Phase 1 UI. Phase 4 replaces this with Supabase state;
  * nothing outside src/mocks should construct game data by hand.
  */
-export const MOCK_PLAYERS: Player[] = [
+export const MOCK_PLAYERS: PlayerView[] = [
   { id: "p1", name: "You", avatar: "violet", isHost: true, isYou: true, isReady: true, connection: "connected" },
   { id: "p2", name: "Maya", avatar: "pink", isHost: false, isYou: false, isReady: true, connection: "connected" },
   { id: "p3", name: "Arjun", avatar: "sun", isHost: false, isYou: false, isReady: true, connection: "connected" },
@@ -86,7 +86,7 @@ export const MOCK_FINAL_LEADERBOARD: LeaderboardEntry[] = [
   { player: MOCK_PLAYERS[3]!, totalScore: 181, lastRoundScore: 63, rank: 4, rankChange: 0 },
 ];
 
-export function findPlayer(id: string): Player {
+export function findPlayer(id: string): PlayerView {
   const player = MOCK_PLAYERS.find((p) => p.id === id);
   if (!player) throw new Error(`Unknown player: ${id}`);
   return player;

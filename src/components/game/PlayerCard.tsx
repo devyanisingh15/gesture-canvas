@@ -1,10 +1,10 @@
 import { Crown, WifiOff } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
-import type { Player } from "@/features/game/types";
+import type { PlayerView } from "@/features/game/types";
 import { cn } from "@/lib/cn";
 
 interface PlayerCardProps {
-  player: Player;
+  player: PlayerView;
   variant?: "tile" | "row";
   trailing?: React.ReactNode;
   className?: string;

@@ -13,28 +13,62 @@ import { GestureCursor } from "@/components/gesture/GestureCursor";
 import { GestureStatus } from "@/components/gesture/GestureStatus";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { getPrompt } from "@/features/game/prompts";
-import { PHASE_ROUTES } from "@/features/game/routes";
+import type { Drawing } from "@/features/drawing/types";
+import type { DrawingPrompt, PlayerView } from "@/features/game/types";
 import { useCamera } from "@/hooks/useCamera";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useGestureDrawing } from "@/hooks/useGestureDrawing";
 import { useHandTracking } from "@/hooks/useHandTracking";
-import { MOCK_ROOM } from "@/mocks/game";
 import { queryCameraPermission } from "@/services/camera";
 
-export function DrawScreen() {
-  const router = useRouter();
-  const total = MOCK_ROOM.settings.drawSeconds;
-  const prompt = getPrompt(MOCK_ROOM.targetPromptId);
+interface DrawScreenProps {
+  prompt: DrawingPrompt;
+  /** Round length in seconds. */
+  total: number;
+  /** Seconds left, from the server clock. Leave out to run a local clock that starts once tracking runs (preview). */
+  remaining?: number;
+  players: PlayerView[];
+  /** Ids of players who have handed in their drawing. */
+  submittedIds?: readonly string[];
+  /** Called with the drawing whenever it changes, so the game can submit it. */
+  onDrawingChange?: (drawing: Drawing) => void;
+  /** Local clock ran out (preview only). */
+  onTimeUp?: () => void;
+  /** Host-only early finish; hidden when not given. */
+  onEndRound?: () => void;
+  endRoundLabel?: string;
+  /** Where "Not now" on the camera prompt goes. */
+  onSkipCamera?: () => void;
+}
 
+export function DrawScreen({
+  prompt,
+  total,
+  remaining: serverRemaining,
+  players,
+  submittedIds = [],
+  onDrawingChange,
+  onTimeUp,
+  onEndRound,
+  endRoundLabel = "End round",
+  onSkipCamera,
+}: DrawScreenProps) {
+  const router = useRouter();
   const camera = useCamera();
   const tracking = useHandTracking(camera.videoRef, camera.status === "ready");
-  // The round clock starts once tracking runs (Phase 4 moves it to the server).
-  const remaining = useCountdown(total, {
-    running: tracking.status === "running",
-    onEnd: () => router.push(PHASE_ROUTES.TIME_UP),
+  const localRemaining = useCountdown(total, {
+    running: serverRemaining === undefined && tracking.status === "running",
+    onEnd: onTimeUp,
   });
+  const remaining = serverRemaining ?? localRemaining;
   const drawing = useGestureDrawing(tracking, { enabled: tracking.status === "running" && remaining > 0 });
+
+  const { drawing: current } = drawing;
+  useEffect(() => {
+    onDrawingChange?.(current);
+    // Only the drawing changing should report it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
 
   // Start straight away if permission was already granted; otherwise ask first.
   const [asked, setAsked] = useState(false);
@@ -133,9 +167,11 @@ export function DrawScreen() {
             <span className="ml-auto text-xs font-bold text-plum-400" data-testid="stroke-count">
               {drawing.strokes.length} {drawing.strokes.length === 1 ? "stroke" : "strokes"}
             </span>
-            <Button variant="ghost" size="sm" onClick={() => router.push(PHASE_ROUTES.TIME_UP)}>
-              End round (preview)
-            </Button>
+            {onEndRound && (
+              <Button variant="ghost" size="sm" onClick={onEndRound}>
+                {endRoundLabel}
+              </Button>
+            )}
           </div>
         </Card>
       </div>
@@ -157,12 +193,18 @@ export function DrawScreen() {
         </Card>
         <div className="flex flex-col gap-2">
           <h2 className="text-sm font-extrabold uppercase tracking-[0.14em] text-plum-400">Players</h2>
-          {MOCK_ROOM.players.map((p) => (
+          {players.map((p) => (
             <PlayerCard
               key={p.id}
               player={p}
               variant="row"
-              trailing={<span className="text-[11px] font-bold text-violet-500">Drawing…</span>}
+              trailing={
+                submittedIds.includes(p.id) ? (
+                  <span className="text-[11px] font-bold text-mint-600">Done</span>
+                ) : (
+                  <span className="text-[11px] font-bold text-violet-500">Drawing…</span>
+                )
+              }
             />
           ))}
         </div>
@@ -173,7 +215,7 @@ export function DrawScreen() {
         state={modalState}
         errorMessage={camera.error?.message}
         onAllow={() => void camera.start()}
-        onSkip={() => router.push("/")}
+        onSkip={onSkipCamera ?? (() => router.push("/"))}
       />
     </div>
   );

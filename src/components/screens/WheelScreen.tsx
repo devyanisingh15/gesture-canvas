@@ -1,31 +1,43 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { GameWheel } from "@/components/game/GameWheel";
 import { PlayerCard } from "@/components/game/PlayerCard";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { getPrompt } from "@/features/game/prompts";
-import { PHASE_ROUTES } from "@/features/game/routes";
-import { MOCK_ROOM } from "@/mocks/game";
+import type { PlayerView, PromptId } from "@/features/game/types";
 
-export function WheelScreen() {
-  const router = useRouter();
-  const [state, setState] = useState<"idle" | "spinning" | "landed">("idle");
-  const target = getPrompt(MOCK_ROOM.targetPromptId);
-  const isHost = MOCK_ROOM.players.some((p) => p.isYou && p.isHost);
+interface WheelScreenProps {
+  round: number;
+  totalRounds: number;
+  /** Prompt the server picked; the wheel only animates to it. */
+  targetId: PromptId;
+  players: PlayerView[];
+  /** Spin straight away (live games: the server already started the phase). */
+  autoSpin?: boolean;
+  onLanded?: () => void;
+}
+
+export function WheelScreen({ round, totalRounds, targetId, players, autoSpin = false, onLanded }: WheelScreenProps) {
+  const [state, setState] = useState<"idle" | "spinning" | "landed">(autoSpin ? "spinning" : "idle");
+  const target = getPrompt(targetId);
+  const isHost = players.some((p) => p.isYou && p.isHost);
+
+  useEffect(() => {
+    if (autoSpin) setState("spinning");
+  }, [autoSpin, targetId]);
 
   const onSpinEnd = () => {
     setState("landed");
-    window.setTimeout(() => router.push(PHASE_ROUTES.TARGET_REVEALED), 1400);
+    onLanded?.();
   };
 
   return (
     <div className="grid items-center gap-10 lg:grid-cols-[1fr_300px]">
       <div className="flex flex-col items-center text-center">
         <Badge tone="violet" uppercase>
-          Round {MOCK_ROOM.currentRound} of {MOCK_ROOM.settings.rounds}
+          Round {round} of {totalRounds}
         </Badge>
         <h1 className="mt-4 text-[34px] font-semibold leading-tight text-plum-700 sm:text-[40px]">
           {state === "landed" ? (
@@ -52,7 +64,7 @@ export function WheelScreen() {
       </div>
       <aside className="flex flex-col gap-2.5">
         <h2 className="text-sm font-extrabold uppercase tracking-[0.14em] text-plum-400">Players</h2>
-        {MOCK_ROOM.players.map((p) => (
+        {players.map((p) => (
           <PlayerCard key={p.id} player={p} variant="row" />
         ))}
       </aside>

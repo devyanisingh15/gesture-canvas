@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { AvatarPicker } from "@/components/forms/AvatarPicker";
 import { TextField } from "@/components/forms/TextField";
@@ -9,29 +9,38 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { AvatarColor } from "@/features/game/types";
-import { MOCK_ROOM } from "@/mocks/game";
+import { CODE_LENGTH } from "@/features/game/protocol";
+import { getGameClient, GameClientError, saveSession } from "@/services/gameClient";
 
-const CODE_LENGTH = 6;
+const cleanCode = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, CODE_LENGTH);
 
 export function JoinGameForm() {
   const router = useRouter();
-  const [code, setCode] = useState("");
+  const params = useSearchParams();
+  const [code, setCode] = useState(() => cleanCode(params.get("code") ?? ""));
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState<AvatarColor>("pink");
   const [errors, setErrors] = useState<{ code?: string; name?: string }>({});
   const [submitting, setSubmitting] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     const next: typeof errors = {};
     if (code.length !== CODE_LENGTH) next.code = `Room codes are ${CODE_LENGTH} characters.`;
-    // Phase 4: look the room up on the server. The mock only knows one room.
-    else if (code !== MOCK_ROOM.code) next.code = `We couldn't find room ${code}. Check the code and try again.`;
     if (!name.trim()) next.name = "Pick a name so your friends know who's drawing.";
     setErrors(next);
     if (Object.keys(next).length > 0) return;
     setSubmitting(true);
-    router.push("/game/lobby");
+    try {
+      const { session } = await getGameClient().joinGame(code, { name, avatar });
+      saveSession(session);
+      router.push(`/room/${session.code}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Couldn't join the game. Try again.";
+      const code = err instanceof GameClientError ? err.code : null;
+      setErrors(code === "NAME_TAKEN" || code === "INVALID_INPUT" ? { name: message } : { code: message });
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -52,9 +61,9 @@ export function JoinGameForm() {
             maxLength={CODE_LENGTH}
             value={code}
             error={errors.code}
-            hint={`Try ${MOCK_ROOM.code} in this preview.`}
+            hint="Six letters and numbers, like PX7K2Q."
             onChange={(e) => {
-              setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""));
+              setCode(cleanCode(e.target.value));
               setErrors((x) => ({ ...x, code: undefined }));
             }}
             className="[&_input]:text-center [&_input]:text-2xl [&_input]:font-bold [&_input]:tracking-[0.4em] [&_input]:uppercase"

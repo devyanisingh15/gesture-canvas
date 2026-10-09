@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { AvatarColor } from "@/features/game/types";
+import { getGameClient, saveSession } from "@/services/gameClient";
 
 export function CreateGameForm() {
   const router = useRouter();
@@ -21,15 +22,21 @@ export function CreateGameForm() {
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setError("Pick a name so your friends know who's drawing.");
       return;
     }
     setSubmitting(true);
-    // Phase 4: create the game on the server, then route to its lobby.
-    router.push("/game/lobby");
+    try {
+      const { session } = await getGameClient().createGame({ name, avatar }, { rounds, drawSeconds: seconds, maxPlayers });
+      saveSession(session);
+      router.push(`/room/${session.code}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't create the game. Try again.");
+      setSubmitting(false);
+    }
   };
 
   return (

@@ -6,10 +6,10 @@ Done so far:
 
 - **Phase 1, UI.** Every screen is built from the Figma Make prototype and runs on mock data.
 - **Phase 2, hand tracking.** The drawing screen uses your webcam and MediaPipe hand tracking. Raise your index finger (other fingers curled) to draw; lower it or move your hand out of frame to lift the pen.
-
 - **Phase 3, drawing engine.** Finger strokes are stored as vector data and rendered to a high-DPI `<canvas>` with smoothed curves, undo and clear.
+- **Phase 4, game engine.** Real games: create a room, friends join with its code, ready up, and the server runs every round (wheel, reveal, drawing timer, scoring, results) through a typed state machine. Games live in memory on the Next.js server for now.
 
-Multiplayer (Supabase) and drawing evaluation come in later phases.
+Supabase persistence and the real drawing evaluator come in later phases. Until then a placeholder scores drawings by how much of the canvas they use, not by what they show.
 
 ## Run it
 
@@ -21,17 +21,20 @@ npm test           # unit tests (Vitest)
 npm run build
 ```
 
-Open `/screens` for an index of every screen. The camera only works on `localhost` or over HTTPS.
+To play, open `/create` in one tab and `/join` in another (each tab is its own player). Live games run at `/room/<code>`. Open `/screens` for an index of every screen on mock data. The camera only works on `localhost` or over HTTPS.
 
 `npm install` copies the MediaPipe WASM runtime into `public/mediapipe/wasm` (ignored by git). The hand model is committed at `public/models/hand_landmarker.task`, so nothing is fetched from a CDN at runtime. To serve them from elsewhere, set `NEXT_PUBLIC_MEDIAPIPE_WASM_PATH` and `NEXT_PUBLIC_HAND_MODEL_PATH`.
 
 ## Screens
 
+The `/game/*` routes show each screen on mock data for design review. The live game at `/room/<code>` renders the same screen components from server state.
+
 | Screen | Route |
 | --- | --- |
 | Landing | `/` |
 | Create Game | `/create` |
-| Join Game | `/join` (the preview room code is `PX7K2Q`) |
+| Join Game | `/join` |
+| Live game (all phases) | `/room/<code>` |
 | Lobby | `/game/lobby` |
 | Wheel Spin | `/game/wheel` |
 | Target Reveal | `/game/reveal` |
@@ -60,11 +63,17 @@ src/
     gesture/           CameraPreview (live feed + hand skeleton), GestureCursor, GestureStatus
     states/            StateScreen (error and interruption states)
     art/               Prompt line art and decorations
-  features/game/       Types, state machine phases, prompt list, prompt art, route map
+  components/screens/  Full screens (wheel, draw, time's up, evaluating, results, final) shared by
+                       the live game and the /game/* previews
+  features/game/       Types, prompt list, prompt art, client/server protocol
+  features/game/engine/  Pure game state machine, types and selectors
+  features/evaluation/ DrawingEvaluator interface and the placeholder scorer
+  server/game/         GameService, GameRepository (in-memory) and API helpers
+  app/api/games/       HTTP + Server-Sent Events API over the GameService
   features/gesture/    Landmark math (index finger detection), coordinate mapping, One Euro smoothing
-  hooks/               useCamera, useHandTracking, useGestureDrawing, useCountdown
-  services/            camera.ts (webcam access), handTracking.ts (MediaPipe HandLandmarker)
-  mocks/               Mock room, players, drawings and scores (Phase 1 only)
+  hooks/               useCamera, useHandTracking, useGestureDrawing, useGame, useCountdown
+  services/            camera.ts (webcam), handTracking.ts (MediaPipe), gameClient.ts (game backend)
+  mocks/               Mock data for the /game/* previews
 ```
 
 Design tokens (colors, fonts, radii, shadows, animations) live in `src/app/globals.css` under `@theme`. Use the tokens rather than raw values.
@@ -82,6 +91,41 @@ type Drawing = { strokes: Stroke[] };
 - `drawingReducer` handles stroke start, continue and end, plus undo and clear. It is pure and unit-tested.
 - `serializeDrawing` / `parseDrawing` convert to and from versioned JSON for saving or sending to the server.
 - `StrokeRenderer` draws strokes onto a canvas sized to its container and device pixel ratio. Finished strokes are cached on an offscreen layer, so each camera frame only redraws the stroke in progress. Because points are normalized, the drawing re-renders exactly at any size.
+
+## Game engine
+
+The server decides the phase; clients only send commands and render what they receive.
+
+```
+LOBBY → STARTING → WHEEL_SPINNING → TARGET_REVEALED → DRAWING → TIME_UP → EVALUATING → ROUND_RESULTS
+                         ▲                                                                   │
+                         └────────────────────── next round ─────────────────────────────────┤
+                                                                                             ▼
+                                                                                      FINAL_RESULTS
+```
+
+| Phase | Ends when |
+| --- | --- |
+| LOBBY | Host presses Start (2+ players, everyone ready) |
+| STARTING | 3 s |
+| WHEEL_SPINNING | 6 s (a prompt is picked at random, no repeats within a game) |
+| TARGET_REVEALED | 5 s |
+| DRAWING | The game's drawing time, or the host ends the round |
+| TIME_UP | Every connected player has handed in their drawing, or 3 s |
+| EVALUATING | Every drawing is scored (at least 4.5 s; missing scores count as 0 after 20 s) |
+| ROUND_RESULTS | Host presses Next Round, or 30 s |
+| FINAL_RESULTS | Never |
+
+The host can also end the game early, and a game in progress ends if fewer than 2 players remain. If the host leaves, the next player to have joined becomes host.
+
+How it is split, so each part can be replaced:
+
+- **Engine** (`features/game/engine`). `createGame`, `addPlayer` and `applyEvent(game, event, { now, random })` are pure functions over the `Game` type. Illegal moves throw a `GameError` with a code (`NOT_HOST`, `WRONG_PHASE`, `PLAYERS_NOT_READY`, and so on). Time and randomness are injected, so tests drive the clock.
+- **Service** (`server/game/gameService.ts`). Stores games through a `GameRepository`, issues each player a secret session token, runs commands one at a time per game, ticks the clock every 250 ms, scores drawings through a `DrawingEvaluator`, tracks who is connected (with a few seconds' grace for reloads) and pushes every change to subscribers.
+- **API** (`app/api/games`). `POST /api/games` creates, `POST /api/games/:code/join` joins, `POST /api/games/:code/commands` sends a command, `GET /api/games/:code/events` streams state as Server-Sent Events.
+- **Client** (`services/gameClient.ts`, `hooks/useGame.ts`). A `GameClient` interface with an HTTP implementation. `useGame` keeps the latest state and the server clock offset, so every player's countdown matches.
+
+Moving to Supabase means a `GameRepository` backed by Postgres, the clock and scoring in a server function, and a `GameClient` that uses Supabase Realtime instead of Server-Sent Events. The engine and the screens stay as they are. Games in memory only live as long as the server process, so this version needs a single long-running server (`npm run dev` or `npm start`), not serverless hosting.
 
 ## How hand tracking fits together
 
