@@ -2,6 +2,7 @@ import type { GestureStatus } from "@/features/game/types";
 import { cn } from "@/lib/cn";
 
 const STYLES: Record<GestureStatus, { label: string; chip: string; dot: string }> = {
+  starting: { label: "Starting camera", chip: "bg-white/80 border-violet-200 text-plum-500", dot: "bg-plum-300 ring-white animate-blink" },
   detected: { label: "Hand detected", chip: "bg-mint-100 border-mint-200 text-plum-700", dot: "bg-mint-400 ring-mint-50" },
   drawing: { label: "Drawing", chip: "bg-violet-100 border-violet-200 text-violet-700", dot: "bg-violet-500 ring-violet-50 animate-blink" },
   "not-detected": {

@@ -9,6 +9,8 @@ interface DrawingCanvasProps {
   label?: string;
   /** Dotted grid surface (true for live drawing, false for thumbnails). */
   grid?: boolean;
+  /** Overlays that share the drawing area's coordinates, e.g. GestureCursor. */
+  children?: React.ReactNode;
 }
 
 function strokePath(stroke: Stroke): string {
@@ -35,7 +37,7 @@ function strokePath(stroke: Stroke): string {
  * internals for a DPR-aware <canvas> fed by the finger tracker, keeping
  * this component's props.
  */
-export function DrawingCanvas({ strokes, cursor, className, label = "Drawing canvas", grid = true }: DrawingCanvasProps) {
+export function DrawingCanvas({ strokes, cursor, className, label = "Drawing canvas", grid = true, children }: DrawingCanvasProps) {
   return (
     <div
       role="img"
@@ -63,6 +65,7 @@ export function DrawingCanvas({ strokes, cursor, className, label = "Drawing can
         ))}
       </svg>
       {cursor && <FingerCursor x={cursor.x} y={cursor.y} />}
+      {children}
       </div>
     </div>
   );

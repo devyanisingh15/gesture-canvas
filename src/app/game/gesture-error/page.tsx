@@ -1,5 +1,5 @@
 import { HandMetal, RefreshCw } from "lucide-react";
-import { CameraPreview } from "@/components/game/CameraPreview";
+import { CameraPreviewIllustration } from "@/components/gesture/CameraPreviewIllustration";
 import { GestureIndicator } from "@/components/game/GestureIndicator";
 import { ScreenContainer } from "@/components/layout/AppShell";
 import { StateScreen } from "@/components/states/StateScreen";
@@ -29,7 +29,7 @@ export default function GestureErrorPage() {
       >
         <div className="flex flex-col items-center gap-4">
           <GestureIndicator status="not-detected" />
-          <CameraPreview handVisible={false} className="w-full max-w-xs" />
+          <CameraPreviewIllustration handVisible={false} className="w-full max-w-xs" />
           <ul className="w-full max-w-xs space-y-2 text-left">
             {TIPS.map((tip) => (
               <li key={tip} className="flex items-center gap-2.5 text-sm font-semibold text-plum-600">

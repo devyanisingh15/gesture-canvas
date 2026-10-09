@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "node scripts/copy-mediapipe-wasm.mjs",
+    "predev": "node scripts/copy-mediapipe-wasm.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/copy-mediapipe-wasm.mjs",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"
@@ -11,6 +14,7 @@
   "dependencies": {
     "@fontsource-variable/fredoka": "^5.3.0",
     "@fontsource-variable/nunito": "^5.3.0",
+    "@mediapipe/tasks-vision": "^1.1.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.54.0",
     "next": "^15.5.27",

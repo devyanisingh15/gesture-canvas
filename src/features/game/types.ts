@@ -98,4 +98,4 @@ export interface LeaderboardEntry {
   rankChange: number;
 }
 
-export type GestureStatus = "detected" | "not-detected" | "drawing";
+export type GestureStatus = "starting" | "detected" | "not-detected" | "drawing";

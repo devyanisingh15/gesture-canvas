@@ -1,10 +1,7 @@
 import { cn } from "@/lib/cn";
 
-/**
- * Mirrored webcam preview. Phase 1 shows an illustrated hand with landmark
- * dots; Phase 2 renders the real <video> stream underneath the same frame.
- */
-export function CameraPreview({ handVisible = true, className }: { handVisible?: boolean; className?: string }) {
+/** Illustrated stand-in for the camera preview, used on static screens with no live camera. */
+export function CameraPreviewIllustration({ handVisible = true, className }: { handVisible?: boolean; className?: string }) {
   return (
     <div className={cn("relative aspect-video overflow-hidden rounded-2xl border-2 border-white bg-gradient-to-br from-plum-700 to-plum-900 shadow-soft", className)}>
       <span className="absolute left-2.5 top-2.5 inline-flex items-center gap-1.5 rounded-full bg-black/30 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.14em] text-white">

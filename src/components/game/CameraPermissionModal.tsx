@@ -2,18 +2,20 @@ import { Camera, CameraOff, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 
-export type CameraPermissionState = "prompt" | "requesting" | "denied";
+export type CameraPermissionState = "prompt" | "requesting" | "denied" | "error";
 
 interface CameraPermissionModalProps {
   open: boolean;
   state: CameraPermissionState;
+  /** Shown for the "error" state (no camera, camera busy…). */
+  errorMessage?: string;
   onAllow?: () => void;
   onSkip?: () => void;
 }
 
 /** Asks for webcam access before drawing; shows recovery steps when it's blocked. */
-export function CameraPermissionModal({ open, state, onAllow, onSkip }: CameraPermissionModalProps) {
-  const denied = state === "denied";
+export function CameraPermissionModal({ open, state, errorMessage, onAllow, onSkip }: CameraPermissionModalProps) {
+  const denied = state === "denied" || state === "error";
   return (
     <Modal open={open} labelledBy="camera-title" className="text-center">
       <span
@@ -26,10 +28,12 @@ export function CameraPermissionModal({ open, state, onAllow, onSkip }: CameraPe
         {denied ? <CameraOff className="size-8" aria-hidden /> : <Camera className="size-8" aria-hidden />}
       </span>
       <h2 id="camera-title" className="mt-5 text-[26px] font-semibold leading-tight text-plum-700">
-        {denied ? "Camera is blocked" : "Allow camera access"}
+        {state === "error" ? "Camera unavailable" : denied ? "Camera is blocked" : "Allow camera access"}
       </h2>
       <p className="mt-2 text-[15px] leading-relaxed text-plum-500">
-        {denied
+        {state === "error"
+          ? `${errorMessage ?? "The camera couldn't start."} Check that a camera is connected and not used by another app, then try again.`
+          : denied
           ? "Gesture Canvas needs your camera to track your index finger. Click the camera icon in your browser's address bar, choose Allow, then try again."
           : "Your hand is the controller. We use your camera to follow your index finger while you draw."}
       </p>
