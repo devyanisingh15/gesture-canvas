@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Copy, Play } from "lucide-react";
+import { Check, Copy, LogOut, Play } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -20,9 +20,13 @@ interface GameLobbyProps {
   startingIn?: number | null;
   /** Last command error, e.g. "Everyone needs to be ready." */
   error?: string | null;
+  /** Live: leave the room. */
+  onLeave?: () => void;
+  /** An action (start, leave) is in flight. */
+  busy?: boolean;
 }
 
-export function GameLobby({ room, startHref, onStart, onToggleReady, startingIn = null, error }: GameLobbyProps) {
+export function GameLobby({ room, startHref, onStart, onToggleReady, startingIn = null, error, onLeave, busy = false }: GameLobbyProps) {
   const { players, settings } = room;
   const you = players.find((p) => p.isYou);
   const readyCount = players.filter((p) => p.isReady).length;
@@ -34,7 +38,9 @@ export function GameLobby({ room, startHref, onStart, onToggleReady, startingIn 
   const openSeats = Math.max(0, settings.maxPlayers - players.length);
   const starting = startingIn !== null;
   const hint = starting
-    ? `Starting in ${startingIn}…`
+    ? startingIn > 0
+      ? `Starting in ${startingIn}…`
+      : "Starting…"
     : you?.isHost
       ? live && online.length >= 2 && !canStart
         ? "Waiting for everyone to be ready."
@@ -78,7 +84,7 @@ export function GameLobby({ room, startHref, onStart, onToggleReady, startingIn 
           </dl>
         </Card>
         <div className="flex flex-col gap-2">
-          {live && !you?.isHost && !starting ? (
+          {live && !you?.isHost && !onToggleReady ? null : live && !you?.isHost && !starting ? (
             <Button
               size="lg"
               fullWidth
@@ -90,7 +96,7 @@ export function GameLobby({ room, startHref, onStart, onToggleReady, startingIn 
             </Button>
           ) : canStart && !starting ? (
             live || !startHref ? (
-              <Button onClick={onStart} size="lg" fullWidth iconRight={<Play className="size-4 fill-current" aria-hidden />}>
+              <Button onClick={onStart} disabled={busy} size="lg" fullWidth iconRight={<Play className="size-4 fill-current" aria-hidden />}>
                 Start Game
               </Button>
             ) : (
@@ -110,6 +116,11 @@ export function GameLobby({ room, startHref, onStart, onToggleReady, startingIn 
             <p role="alert" className="text-center text-xs font-bold text-danger-500">
               {error}
             </p>
+          )}
+          {onLeave && !starting && (
+            <Button variant="ghost" size="sm" className="self-center" onClick={onLeave} disabled={busy} iconLeft={<LogOut className="size-4" aria-hidden />}>
+              Leave game
+            </Button>
           )}
         </div>
       </aside>

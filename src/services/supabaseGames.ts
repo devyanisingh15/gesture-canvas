@@ -39,6 +39,9 @@ export type GameRequestErrorKind =
   | "started"
   | "full"
   | "name-taken"
+  | "not-member"
+  | "not-host"
+  | "not-enough-players"
   | "unknown";
 
 export class GameRequestError extends Error {
@@ -88,6 +91,10 @@ function toRequestError(error: PostgrestError | Error | null | undefined, fallba
   if (code === "GC002") return new GameRequestError("started", "This game has already started. Ask your host to start a new one.");
   if (code === "GC003") return new GameRequestError("full", "This game is full (6 players).");
   if (code === "GC004") return new GameRequestError("name-taken", "Someone in this game already has that name. Pick another.");
+  // Raised by the lobby functions (see supabase/migrations/20261010030000_lobby_realtime.sql).
+  if (code === "GC005") return new GameRequestError("not-member", "You're no longer in this game.");
+  if (code === "GC006") return new GameRequestError("not-host", "Only the host can start the game.");
+  if (code === "GC007") return new GameRequestError("not-enough-players", "You need at least 2 players in the lobby to start.");
   if (code === "28000" || code === "42501") return new GameRequestError("auth", "You need to be signed in to do that.");
   if (code === "PGRST202" || code === "42883" || code === "PGRST205" || code === "42P01") {
     return new GameRequestError("setup", "The game database isn't set up yet. Apply the Supabase migrations and try again.");
@@ -162,6 +169,24 @@ export async function joinGame(input: { roomCode: string; displayName: string })
   return { gameId: row.game_id, playerId: row.player_id, roomCode: row.room_code };
 }
 
+/** Calls a lobby action on the database; it checks the caller's seat itself. */
+async function lobbyAction(fn: "touch_seat" | "leave_game" | "start_game", gameId: string, fallback: string): Promise<void> {
+  const { error } = await guard(
+    async () => client().rpc(fn, { p_game_id: gameId }).abortSignal(AbortSignal.timeout(REQUEST_TIMEOUT_MS)),
+    fallback,
+  );
+  if (error) throw toRequestError(error, fallback);
+}
+
+/** Marks this player as recently seen, using the database clock. */
+export const touchSeat = (gameId: string) => lobbyAction("touch_seat", gameId, "Couldn't reach the game server.");
+
+/** Frees this player's seat. If they were host, the next player becomes host. */
+export const leaveGame = (gameId: string) => lobbyAction("leave_game", gameId, "Couldn't leave the game. Try again.");
+
+/** Moves the game out of the lobby. The database refuses anyone but the host. */
+export const startGame = (gameId: string) => lobbyAction("start_game", gameId, "Couldn't start the game. Try again.");
+
 /** The game and its players, as this player is allowed to see them. */
 export async function fetchLobby(gameId: string): Promise<{ game: LobbyGame; players: LobbyPlayer[] }> {
   const supabase = client();
@@ -195,6 +220,14 @@ export function saveGameSession(session: GameSession): void {
     sessionStorage.setItem(sessionKey(session.roomCode), JSON.stringify(session));
   } catch {
     // Storage unavailable (private mode): the lobby will ask the player to rejoin.
+  }
+}
+
+export function clearGameSession(roomCode: string): void {
+  try {
+    sessionStorage.removeItem(sessionKey(roomCode));
+  } catch {
+    // Nothing stored.
   }
 }
 

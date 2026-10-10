@@ -125,6 +125,18 @@ export interface Database {
         Args: { p_room_code: string; p_display_name: string };
         Returns: { game_id: string; player_id: string; room_code: string }[];
       };
+      touch_seat: {
+        Args: { p_game_id: string };
+        Returns: undefined;
+      };
+      leave_game: {
+        Args: { p_game_id: string };
+        Returns: undefined;
+      };
+      start_game: {
+        Args: { p_game_id: string };
+        Returns: string;
+      };
       find_open_lobby: {
         Args: { p_room_code: string };
         Returns: string | null;
