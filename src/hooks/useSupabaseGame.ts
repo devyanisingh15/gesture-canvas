@@ -11,6 +11,8 @@ import { GameRequestError, leaveGame, loadGameSession, startGame, type GameSessi
 const FALLBACK_REFRESH_MS = 30_000;
 /** Spread clients' "time's up" calls a little; the database lets exactly one through anyway. */
 const ADVANCE_JITTER_MS = 250;
+/** Longest wait between retries when the database can't be reached. */
+const ADVANCE_RETRY_MAX_MS = 5_000;
 
 export interface UseSupabaseGame {
   /** undefined while loading; null when this tab has no seat in the room. */
@@ -134,11 +136,15 @@ export function useSupabaseGame(code: string): UseSupabaseGame {
           void load();
         } else if (result.version !== phaseVersion) {
           void load(); // someone else moved it on
-        } else if (tries++ < 20) {
+        } else {
           timer = setTimeout(fire, 500); // not due yet by the database clock
         }
       } catch {
-        if (!cancelled && tries++ < 20) timer = setTimeout(fire, 1_000);
+        // The database didn't answer or refused (network, timeout, a failed write).
+        // Nothing moved, so keep asking, backing off, until it does or a re-read shows someone else did.
+        if (cancelled) return;
+        timer = setTimeout(fire, Math.min(ADVANCE_RETRY_MAX_MS, 1_000 * 2 ** Math.min(tries++, 3)));
+        if (tries % 3 === 0) void load();
       }
     };
     timer = setTimeout(fire, Math.max(0, phaseEndsAt - serverNow()) + 100 + Math.random() * ADVANCE_JITTER_MS);

@@ -88,6 +88,7 @@ export function LiveGame({ code }: { code: string }) {
           game={game}
           me={me}
           seconds={seconds}
+          serverNow={serverNow}
           lobby={{
             onStart: () => void run({ type: "START_GAME" }),
             onToggleReady: () => void run({ type: "SET_READY", ready: !me.isReady }),

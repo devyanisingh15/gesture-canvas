@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { getPrompt } from "@/features/game/prompts";
 import type { PlayerView, PromptId } from "@/features/game/types";
+import { SPIN_MS, spinElapsedMs } from "@/features/game/wheel";
 
 interface WheelScreenProps {
   round: number;
@@ -16,16 +17,24 @@ interface WheelScreenProps {
   players: PlayerView[];
   /** Spin straight away (live games: the server already started the phase). */
   autoSpin?: boolean;
+  /**
+   * Live games: when the server started the spin, and its clock. Players who
+   * open or reload the page mid-spin then land at the same moment as everyone else.
+   */
+  spinStartedAt?: number;
+  serverNow?: () => number;
   onLanded?: () => void;
 }
 
-export function WheelScreen({ round, totalRounds, targetId, players, autoSpin = false, onLanded }: WheelScreenProps) {
-  const [state, setState] = useState<"idle" | "spinning" | "landed">(autoSpin ? "spinning" : "idle");
+export function WheelScreen({ round, totalRounds, targetId, players, autoSpin = false, spinStartedAt, serverNow, onLanded }: WheelScreenProps) {
+  // Measured once, when this round's wheel appears.
+  const [elapsedMs] = useState(() => (autoSpin && spinStartedAt !== undefined && serverNow ? spinElapsedMs(spinStartedAt, serverNow()) : 0));
+  const [state, setState] = useState<"idle" | "spinning" | "landed">(autoSpin ? (elapsedMs >= SPIN_MS ? "landed" : "spinning") : "idle");
   const target = getPrompt(targetId);
   const isHost = players.some((p) => p.isYou && p.isHost);
 
   useEffect(() => {
-    if (autoSpin) setState("spinning");
+    if (autoSpin) setState((s) => (s === "landed" ? s : "spinning"));
   }, [autoSpin, targetId]);
 
   const onSpinEnd = () => {
@@ -39,7 +48,7 @@ export function WheelScreen({ round, totalRounds, targetId, players, autoSpin = 
         <Badge tone="violet" uppercase>
           Round {round} of {totalRounds}
         </Badge>
-        <h1 className="mt-4 text-[34px] font-semibold leading-tight text-plum-700 sm:text-[40px]">
+        <h1 data-landed={state === "landed" ? target.id : undefined} className="mt-4 text-[34px] font-semibold leading-tight text-plum-700 sm:text-[40px]">
           {state === "landed" ? (
             <>
               It&apos;s a <span className="text-violet-500">{target.label}!</span>
@@ -49,7 +58,7 @@ export function WheelScreen({ round, totalRounds, targetId, players, autoSpin = 
           )}
         </h1>
         <p className="mt-2 text-[15px] text-plum-500">Everyone will draw whatever the wheel lands on.</p>
-        <GameWheel targetId={target.id} spinning={state !== "idle"} onSpinEnd={onSpinEnd} className="mt-12" />
+        <GameWheel targetId={target.id} spinning={state !== "idle"} elapsedMs={elapsedMs} onSpinEnd={onSpinEnd} className="mt-12" />
         <div className="mt-10 h-[52px]">
           {state === "idle" &&
             (isHost ? (

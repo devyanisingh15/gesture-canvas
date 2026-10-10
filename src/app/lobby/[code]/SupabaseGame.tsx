@@ -92,6 +92,7 @@ export function SupabaseGame({ code }: { code: string }) {
           game={game}
           me={me}
           seconds={seconds}
+          serverNow={serverNow}
           lobby={{
             onStart: () => void start(),
             onLeave: async () => {

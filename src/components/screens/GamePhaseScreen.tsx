@@ -25,6 +25,8 @@ interface GamePhaseScreenProps {
   me: Player;
   /** Whole seconds left in the current phase, on the server clock. */
   seconds: number;
+  /** The server's clock (ms), for syncing animations to phase start times. */
+  serverNow: () => number;
   lobby: LobbyActions;
   /** Host: end drawing early. */
   onEndRound?: () => void;
@@ -39,7 +41,7 @@ interface GamePhaseScreenProps {
  * The one place that decides which screen each game phase shows. Both the
  * in-memory room and the Supabase room render through it, from server state.
  */
-export function GamePhaseScreen({ game, me, seconds, lobby, onEndRound, onNextRound, onDrawingChange, shownDrawing }: GamePhaseScreenProps) {
+export function GamePhaseScreen({ game, me, seconds, serverNow, lobby, onEndRound, onNextRound, onDrawingChange, shownDrawing }: GamePhaseScreenProps) {
   const round = currentRound(game);
   const roundNumber = round?.number ?? 0;
   const players = playerViews(game, me.id);
@@ -58,7 +60,16 @@ export function GamePhaseScreen({ game, me, seconds, lobby, onEndRound, onNextRo
     case "WHEEL_SPINNING":
       return (
         <ScreenContainer>
-          <WheelScreen key={roundNumber} round={roundNumber} totalRounds={game.settings.rounds} targetId={round!.promptId} players={players} autoSpin />
+          <WheelScreen
+            key={roundNumber}
+            round={roundNumber}
+            totalRounds={game.settings.rounds}
+            targetId={round!.promptId}
+            players={players}
+            autoSpin
+            spinStartedAt={game.phaseStartedAt}
+            serverNow={serverNow}
+          />
         </ScreenContainer>
       );
     case "TARGET_REVEALED":

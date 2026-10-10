@@ -4,35 +4,43 @@ import { useEffect, useState } from "react";
 import { PromptArt } from "@/components/art/PromptArt";
 import { PROMPTS } from "@/features/game/prompts";
 import type { PromptId } from "@/features/game/types";
+import { landingRotation, SPIN_MS } from "@/features/game/wheel";
 import { cn } from "@/lib/cn";
 
 const SEGMENT_COLORS = ["#ede6ff", "#fde4ef", "#fff6d6", "#d6f6e4", "#e6efff"] as const;
-const SPIN_MS = 4200;
-
 interface GameWheelProps {
   /** Target chosen by the server; the wheel only animates to it. */
   targetId: PromptId;
   spinning: boolean;
+  /**
+   * How far into the spin this client already is (ms), for players who arrive
+   * or reconnect mid-spin: they spin for what's left and land with everyone
+   * else, or start landed if the spin is over.
+   */
+  elapsedMs?: number;
   onSpinEnd?: () => void;
   className?: string;
 }
 
 /** Prize wheel of the 10 prompts with a pointer at the top. */
-export function GameWheel({ targetId, spinning, onSpinEnd, className }: GameWheelProps) {
+export function GameWheel({ targetId, spinning, elapsedMs = 0, onSpinEnd, className }: GameWheelProps) {
   const count = PROMPTS.length;
   const slice = 360 / count;
-  const targetIndex = Math.max(0, PROMPTS.findIndex((p) => p.id === targetId));
-  const [rotation, setRotation] = useState(0);
+  const landing = landingRotation(targetId);
+  // Arriving after the spin finished: show it landed, no animation.
+  const alreadyLanded = spinning && elapsedMs >= SPIN_MS;
+  const remainingMs = Math.max(0, SPIN_MS - elapsedMs);
+  const [rotation, setRotation] = useState(alreadyLanded ? landing : 0);
 
   useEffect(() => {
     if (!spinning) return;
-    const landing = 360 * 6 - (targetIndex * slice + slice / 2);
     setRotation(landing);
-    const id = window.setTimeout(() => onSpinEnd?.(), SPIN_MS);
+    const id = window.setTimeout(() => onSpinEnd?.(), remainingMs);
     return () => window.clearTimeout(id);
-    // onSpinEnd is intentionally not a dependency: a new callback must not restart the spin.
+    // Only the target and the start of the spin matter: a new callback or a later
+    // elapsedMs must not restart it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spinning, targetIndex, slice]);
+  }, [spinning, landing]);
 
   const gradient = `conic-gradient(${PROMPTS.map((_, i) => {
     const color = SEGMENT_COLORS[i % SEGMENT_COLORS.length];
@@ -44,11 +52,13 @@ export function GameWheel({ targetId, spinning, onSpinEnd, className }: GameWhee
       <div className="absolute inset-[-14px] rounded-full border-2 border-dashed border-violet-300/70" aria-hidden />
       <div className="absolute inset-0 rounded-full bg-white p-3 shadow-card">
         <div
+          data-wheel
+          data-rotation={rotation}
           className="relative size-full rounded-full border-4 border-violet-200"
           style={{
             background: gradient,
             transform: `rotate(${rotation}deg)`,
-            transition: spinning ? `transform ${SPIN_MS}ms cubic-bezier(0.15, 0.85, 0.2, 1)` : "none",
+            transition: spinning && !alreadyLanded ? `transform ${remainingMs}ms cubic-bezier(0.15, 0.85, 0.2, 1)` : "none",
           }}
         >
           {PROMPTS.map((p, i) => {
