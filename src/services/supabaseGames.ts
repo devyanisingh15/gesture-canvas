@@ -28,7 +28,18 @@ export interface GameSession {
   roomCode: string;
 }
 
-export type GameRequestErrorKind = "config" | "auth" | "invalid" | "setup" | "network" | "not-found" | "unknown";
+export type GameRequestErrorKind =
+  | "config"
+  | "auth"
+  | "invalid"
+  | "invalid-code"
+  | "setup"
+  | "network"
+  | "not-found"
+  | "started"
+  | "full"
+  | "name-taken"
+  | "unknown";
 
 export class GameRequestError extends Error {
   constructor(
@@ -67,7 +78,16 @@ function toRequestError(error: PostgrestError | Error | null | undefined, fallba
   if (/fetch|network|Failed to/i.test(message) && !code) {
     return new GameRequestError("network", "Can't reach the game server. Check your connection.");
   }
-  if (code === "22023") return new GameRequestError("invalid", message);
+  if (code === "22023") {
+    return /room code/i.test(message)
+      ? new GameRequestError("invalid-code", "That isn't a valid room code. Codes are 6 letters and numbers, like PX7K2Q.")
+      : new GameRequestError("invalid", message);
+  }
+  // Raised by join_game (see supabase/migrations/20261010020000_join_game_function.sql).
+  if (code === "GC001") return new GameRequestError("not-found", "We couldn't find a game with that code. Check it with your host.");
+  if (code === "GC002") return new GameRequestError("started", "This game has already started. Ask your host to start a new one.");
+  if (code === "GC003") return new GameRequestError("full", "This game is full (6 players).");
+  if (code === "GC004") return new GameRequestError("name-taken", "Someone in this game already has that name. Pick another.");
   if (code === "28000" || code === "42501") return new GameRequestError("auth", "You need to be signed in to do that.");
   if (code === "PGRST202" || code === "42883" || code === "PGRST205" || code === "42P01") {
     return new GameRequestError("setup", "The game database isn't set up yet. Apply the Supabase migrations and try again.");
@@ -112,6 +132,33 @@ export async function createGame(input: { displayName: string; totalRounds: numb
   if (error) throw toRequestError(error, fallback);
   const row = data?.[0];
   if (!row) throw new GameRequestError("unknown", "Couldn't create the game. Try again.");
+  return { gameId: row.game_id, playerId: row.player_id, roomCode: row.room_code };
+}
+
+/** Trims, upper-cases and checks a room code typed by a player. Returns null if it can't be one. */
+export function normalizeRoomCode(input: string): string | null {
+  const code = input.trim().toUpperCase();
+  return /^[A-HJ-NP-Z2-9]{6}$/.test(code) ? code : null;
+}
+
+/**
+ * Takes a seat in a game that's still in the lobby. The database function
+ * checks the room under a lock (exists, in LOBBY, under 6 players, name free)
+ * and returns the caller's existing seat if they're already in it.
+ */
+export async function joinGame(input: { roomCode: string; displayName: string }): Promise<GameSession> {
+  const roomCode = normalizeRoomCode(input.roomCode);
+  if (!roomCode) throw new GameRequestError("invalid-code", "That isn't a valid room code. Codes are 6 letters and numbers, like PX7K2Q.");
+  const fallback = "Couldn't join the game. Try again.";
+  const { data, error } = await guard(async () => {
+    await ensureSignedIn();
+    return client()
+      .rpc("join_game", { p_room_code: roomCode, p_display_name: input.displayName.trim() })
+      .abortSignal(AbortSignal.timeout(REQUEST_TIMEOUT_MS));
+  }, fallback);
+  if (error) throw toRequestError(error, fallback);
+  const row = data?.[0];
+  if (!row) throw new GameRequestError("unknown", fallback);
   return { gameId: row.game_id, playerId: row.player_id, roomCode: row.room_code };
 }
 

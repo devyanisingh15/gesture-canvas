@@ -94,7 +94,7 @@ type Drawing = { strokes: Stroke[] };
 
 ## Supabase
 
-When the two variables below are set, **Create Game** stores the game in Supabase and opens its lobby at `/lobby/<code>`. Without them, games run in memory as before (`/room/<code>`). Joining and playing through Supabase come next.
+When the two variables below are set, **Create Game** and **Join Game** store games and players in Supabase and open the lobby at `/lobby/<code>`. Without them, games run in memory as before (`/room/<code>`). Starting and playing through Supabase come next.
 
 1. Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (Supabase dashboard → Project Settings → API). Only the publishable key is used; never put a secret or `service_role` key in a `NEXT_PUBLIC_` variable.
 2. Restart `npm run dev` and open `/api/health/supabase`. `{"ok":true,"project":"…"}` means the URL and key work.
@@ -102,6 +102,10 @@ When the two variables below are set, **Create Game** stores the game in Supabas
 4. Turn on **Authentication → Sign In / Providers → Allow anonymous sign-ins**. Each browser signs in as a guest, and that identity is the player.
 
 How Create Game works: the form calls the `create_game` database function (`src/services/supabaseGames.ts`). It runs as the signed-in guest, picks an unused 6-character room code, and inserts the game (`LOBBY`, round 0 of the chosen rounds) and the host's player row in one transaction. Submitting twice within 30 seconds returns the same game. The tab keeps `{ gameId, playerId, roomCode }` in `sessionStorage`.
+
+How Join Game works: the form trims and upper-cases the code, then calls `join_game`. Under a lock on the game it checks the room exists, is still in `LOBBY`, has fewer than 6 players and doesn't already have that name (ignoring case), then adds the player. Each failure has its own error code, shown as a message on the right field. A guest who is already in the room gets their existing seat back instead of a second one.
+
+To test the database functions locally: `psql -d <throwaway db> -q -t -A -f supabase/tests/game_functions_test.sql` after the stub and the migrations (see `supabase/tests/rls_test.sql` for the setup).
 
 | File | Use from |
 | --- | --- |

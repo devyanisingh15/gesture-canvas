@@ -121,6 +121,10 @@ export interface Database {
         Args: { p_display_name: string; p_total_rounds?: number };
         Returns: { game_id: string; player_id: string; room_code: string }[];
       };
+      join_game: {
+        Args: { p_room_code: string; p_display_name: string };
+        Returns: { game_id: string; player_id: string; room_code: string }[];
+      };
       find_open_lobby: {
         Args: { p_room_code: string };
         Returns: string | null;
