@@ -92,6 +92,19 @@ type Drawing = { strokes: Stroke[] };
 - `serializeDrawing` / `parseDrawing` convert to and from versioned JSON for saving or sending to the server.
 - `StrokeRenderer` draws strokes onto a canvas sized to its container and device pixel ratio. Finished strokes are cached on an offscreen layer, so each camera frame only redraws the stroke in progress. Because points are normalized, the drawing re-renders exactly at any size.
 
+## Supabase
+
+The Supabase clients are set up but the game doesn't use them yet (games still run in memory).
+
+1. Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (Supabase dashboard → Project Settings → API). Only the publishable key is used; never put a secret or `service_role` key in a `NEXT_PUBLIC_` variable.
+2. Restart `npm run dev` and open `/api/health/supabase`. `{"ok":true,"project":"…"}` means the URL and key work.
+
+| File | Use from |
+| --- | --- |
+| `src/lib/supabase/client.ts` → `getSupabaseBrowserClient()` | Client Components and browser code |
+| `src/lib/supabase/server.ts` → `createSupabaseServerClient()` | Server Components, Route Handlers, Server Actions (one per request) |
+| `src/lib/supabase/env.ts` | Reads and checks the variables; throws a clear error naming any that are missing |
+
 ## Game engine
 
 The server decides the phase; clients only send commands and render what they receive.
