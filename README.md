@@ -94,10 +94,14 @@ type Drawing = { strokes: Stroke[] };
 
 ## Supabase
 
-The Supabase clients are set up but the game doesn't use them yet (games still run in memory).
+When the two variables below are set, **Create Game** stores the game in Supabase and opens its lobby at `/lobby/<code>`. Without them, games run in memory as before (`/room/<code>`). Joining and playing through Supabase come next.
 
 1. Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (Supabase dashboard → Project Settings → API). Only the publishable key is used; never put a secret or `service_role` key in a `NEXT_PUBLIC_` variable.
 2. Restart `npm run dev` and open `/api/health/supabase`. `{"ok":true,"project":"…"}` means the URL and key work.
+3. Apply the migrations in `supabase/migrations/` in order (`supabase db push`, or paste each into the SQL Editor).
+4. Turn on **Authentication → Sign In / Providers → Allow anonymous sign-ins**. Each browser signs in as a guest, and that identity is the player.
+
+How Create Game works: the form calls the `create_game` database function (`src/services/supabaseGames.ts`). It runs as the signed-in guest, picks an unused 6-character room code, and inserts the game (`LOBBY`, round 0 of the chosen rounds) and the host's player row in one transaction. Submitting twice within 30 seconds returns the same game. The tab keeps `{ gameId, playerId, roomCode }` in `sessionStorage`.
 
 | File | Use from |
 | --- | --- |

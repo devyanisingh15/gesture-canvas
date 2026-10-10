@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Loader2, RotateCcw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AvatarPicker } from "@/components/forms/AvatarPicker";
 import { Segmented } from "@/components/forms/Segmented";
 import { TextField } from "@/components/forms/TextField";
@@ -10,33 +10,63 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { AvatarColor } from "@/features/game/types";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getGameClient, saveSession } from "@/services/gameClient";
+import { createGame, GameRequestError, saveGameSession } from "@/services/supabaseGames";
+
+/** A failure the player can act on: on the name field, or a banner with an optional retry. */
+type FormError = { field: "name"; message: string } | { field: "form"; message: string; retryable: boolean };
 
 export function CreateGameForm() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState<AvatarColor>("violet");
-  const [rounds, setRounds] = useState(3);
+  const [rounds, setRounds] = useState(5);
   const [seconds, setSeconds] = useState(60);
   const [maxPlayers, setMaxPlayers] = useState(6);
-  const [error, setError] = useState<string>();
+  const [error, setError] = useState<FormError>();
   const [submitting, setSubmitting] = useState(false);
+  // Set synchronously, so a double-click can't start a second request before React re-renders.
+  const inFlight = useRef(false);
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const create = async () => {
+    if (inFlight.current) return;
     if (!name.trim()) {
-      setError("Pick a name so your friends know who's drawing.");
+      setError({ field: "name", message: "Pick a name so your friends know who's drawing." });
       return;
     }
+    inFlight.current = true;
     setSubmitting(true);
+    setError(undefined);
     try {
-      const { session } = await getGameClient().createGame({ name, avatar }, { rounds, drawSeconds: seconds, maxPlayers });
-      saveSession(session);
-      router.push(`/room/${session.code}`);
+      if (isSupabaseConfigured()) {
+        const session = await createGame({ displayName: name, totalRounds: rounds });
+        saveGameSession(session);
+        router.push(`/lobby/${session.roomCode}`);
+      } else {
+        const { session } = await getGameClient().createGame({ name, avatar }, { rounds, drawSeconds: seconds, maxPlayers });
+        saveSession(session);
+        router.push(`/room/${session.code}`);
+      }
+      // Stay disabled while the lobby loads.
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't create the game. Try again.");
+      inFlight.current = false;
       setSubmitting(false);
+      if (err instanceof GameRequestError && err.kind === "invalid") {
+        setError({ field: "name", message: err.message });
+      } else {
+        setError({
+          field: "form",
+          message: err instanceof Error ? err.message : "Couldn't create the game. Try again.",
+          retryable: err instanceof GameRequestError ? err.retryable : true,
+        });
+      }
     }
+  };
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    void create();
   };
 
   return (
@@ -52,10 +82,10 @@ export function CreateGameForm() {
           placeholder="e.g. Maya"
           maxLength={16}
           value={name}
-          error={error}
+          error={error?.field === "name" ? error.message : undefined}
           onChange={(e) => {
             setName(e.target.value);
-            setError(undefined);
+            if (error?.field === "name") setError(undefined);
           }}
         />
         <AvatarPicker name={name} value={avatar} onChange={setAvatar} />
@@ -67,7 +97,25 @@ export function CreateGameForm() {
           value={maxPlayers}
           onChange={setMaxPlayers}
         />
-        <Button type="submit" size="lg" fullWidth className="mt-2" disabled={submitting} iconRight={<ArrowRight className="size-4" aria-hidden />}>
+        {error?.field === "form" && (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-danger-100 px-4 py-2.5 text-sm font-bold text-danger-500">
+            <span>{error.message}</span>
+            {error.retryable && (
+              <Button type="button" variant="secondary" size="sm" onClick={() => void create()} iconLeft={<RotateCcw className="size-4" aria-hidden />}>
+                Try again
+              </Button>
+            )}
+          </div>
+        )}
+        <Button
+          type="submit"
+          size="lg"
+          fullWidth
+          className="mt-2"
+          disabled={submitting}
+          aria-busy={submitting}
+          iconRight={submitting ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <ArrowRight className="size-4" aria-hidden />}
+        >
           {submitting ? "Creating room…" : "Create Game"}
         </Button>
       </form>
