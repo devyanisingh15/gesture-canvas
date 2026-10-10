@@ -1,19 +1,7 @@
 import type { Stroke } from "@/features/drawing/types";
 
-/** Server-authoritative game phases, in order. See features/game/engine/stateMachine.ts. */
-export const GAME_PHASES = [
-  "LOBBY",
-  "STARTING",
-  "WHEEL_SPINNING",
-  "TARGET_REVEALED",
-  "DRAWING",
-  "TIME_UP",
-  "EVALUATING",
-  "ROUND_RESULTS",
-  "FINAL_RESULTS",
-] as const;
-
-export type GamePhase = (typeof GAME_PHASES)[number];
+export { GAME_PHASES, type GamePhase } from "./state";
+import type { GamePhase } from "./state";
 
 export type PromptId =
   | "house"

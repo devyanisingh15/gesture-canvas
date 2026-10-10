@@ -1,25 +1,8 @@
 "use client";
 
 import type { PostgrestError } from "@supabase/supabase-js";
-import type { GameStatus } from "@/lib/supabase/database.types";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { SupabaseConfigError } from "@/lib/supabase/env";
-
-/** Game and player rows as the lobby reads them (players can't see user_id). */
-export interface LobbyGame {
-  id: string;
-  roomCode: string;
-  status: GameStatus;
-  currentRound: number;
-  totalRounds: number;
-}
-
-export interface LobbyPlayer {
-  id: string;
-  displayName: string;
-  isHost: boolean;
-  joinedAt: string;
-}
 
 /** Which game and seat this browser tab holds. */
 export interface GameSession {
@@ -42,6 +25,7 @@ export type GameRequestErrorKind =
   | "not-member"
   | "not-host"
   | "not-enough-players"
+  | "wrong-phase"
   | "unknown";
 
 export class GameRequestError extends Error {
@@ -59,9 +43,9 @@ export class GameRequestError extends Error {
   }
 }
 
-const REQUEST_TIMEOUT_MS = 10_000;
+export const REQUEST_TIMEOUT_MS = 10_000;
 
-function client() {
+export function client() {
   try {
     return getSupabaseBrowserClient();
   } catch (e) {
@@ -70,7 +54,7 @@ function client() {
   }
 }
 
-function toRequestError(error: PostgrestError | Error | null | undefined, fallback: string): GameRequestError {
+export function toRequestError(error: PostgrestError | Error | null | undefined, fallback: string): GameRequestError {
   if (!error) return new GameRequestError("unknown", fallback);
   if (error instanceof GameRequestError) return error;
   const code = "code" in error ? error.code : undefined;
@@ -95,6 +79,8 @@ function toRequestError(error: PostgrestError | Error | null | undefined, fallba
   if (code === "GC005") return new GameRequestError("not-member", "You're no longer in this game.");
   if (code === "GC006") return new GameRequestError("not-host", "Only the host can start the game.");
   if (code === "GC007") return new GameRequestError("not-enough-players", "You need at least 2 players in the lobby to start.");
+  // Raised by the state machine (see supabase/migrations/20261010040000_game_state_machine.sql).
+  if (code === "GC008" || code === "GC009") return new GameRequestError("wrong-phase", "The game has already moved on.");
   if (code === "28000" || code === "42501") return new GameRequestError("auth", "You need to be signed in to do that.");
   if (code === "PGRST202" || code === "42883" || code === "PGRST205" || code === "42P01") {
     return new GameRequestError("setup", "The game database isn't set up yet. Apply the Supabase migrations and try again.");
@@ -103,7 +89,7 @@ function toRequestError(error: PostgrestError | Error | null | undefined, fallba
 }
 
 /** Runs a request, turning anything it throws (network failure, timeout) into a GameRequestError. */
-async function guard<T>(request: () => PromiseLike<T>, fallback: string): Promise<T> {
+export async function guard<T>(request: () => PromiseLike<T>, fallback: string): Promise<T> {
   try {
     return await request();
   } catch (e) {
@@ -186,28 +172,6 @@ export const leaveGame = (gameId: string) => lobbyAction("leave_game", gameId, "
 
 /** Moves the game out of the lobby. The database refuses anyone but the host. */
 export const startGame = (gameId: string) => lobbyAction("start_game", gameId, "Couldn't start the game. Try again.");
-
-/** The game and its players, as this player is allowed to see them. */
-export async function fetchLobby(gameId: string): Promise<{ game: LobbyGame; players: LobbyPlayer[] }> {
-  const supabase = client();
-  const signal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const [gameRes, playersRes] = await guard(
-    () =>
-      Promise.all([
-        supabase.from("games").select("id, room_code, status, current_round, total_rounds").eq("id", gameId).abortSignal(signal).maybeSingle(),
-        supabase.from("players").select("id, display_name, is_host, joined_at").eq("game_id", gameId).order("joined_at").abortSignal(signal),
-      ]),
-    "Couldn't load the game.",
-  );
-  if (gameRes.error) throw toRequestError(gameRes.error, "Couldn't load the game.");
-  if (playersRes.error) throw toRequestError(playersRes.error, "Couldn't load the players.");
-  if (!gameRes.data) throw new GameRequestError("not-found", "This game doesn't exist or you're not in it.");
-  const g = gameRes.data;
-  return {
-    game: { id: g.id, roomCode: g.room_code, status: g.status, currentRound: g.current_round, totalRounds: g.total_rounds },
-    players: playersRes.data.map((p) => ({ id: p.id, displayName: p.display_name, isHost: p.is_host, joinedAt: p.joined_at })),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Session: per tab, keyed by room code. The Supabase auth session itself is

@@ -59,7 +59,7 @@ select pg_temp.expect_code(format($$select * from public.join_game(%L, 'Seven')$
 
 -- A started game.
 reset role;
-update public.games set status = 'STARTING';
+update public.games set status = 'STARTING' where room_code = (select v from t where k = 'code');
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000018', true) \g /dev/null
 select pg_temp.expect_code(format($$select * from public.join_game(%L, 'Late')$$, (select v from t where k = 'code')), 'GC002', 'game already started');

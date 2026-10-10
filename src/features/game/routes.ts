@@ -14,6 +14,7 @@ export const PHASE_ROUTES: Record<GamePhase, string> = {
   EVALUATING: "/game/evaluating",
   ROUND_RESULTS: "/game/results",
   FINAL_RESULTS: "/game/final",
+  COMPLETED: "/game/final",
 };
 
 export const SCREEN_INDEX = [

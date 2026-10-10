@@ -1,31 +1,22 @@
 "use client";
 
-import { ArrowRight, Home, Loader2, RotateCcw, WifiOff } from "lucide-react";
+import { Loader2, WifiOff } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { GameHeader } from "@/components/game/GameHeader";
-import { GameLobby } from "@/components/game/GameLobby";
-import { TargetReveal } from "@/components/game/TargetReveal";
 import { AppShell, ScreenContainer } from "@/components/layout/AppShell";
-import { DrawScreen } from "@/components/screens/DrawScreen";
-import { EvaluatingScreen } from "@/components/screens/EvaluatingScreen";
-import { FinalResultsScreen } from "@/components/screens/FinalResultsScreen";
-import { RoundResultsScreen } from "@/components/screens/RoundResultsScreen";
-import { TimesUpScreen } from "@/components/screens/TimesUpScreen";
-import { WheelScreen } from "@/components/screens/WheelScreen";
+import { GamePhaseScreen } from "@/components/screens/GamePhaseScreen";
 import { StateScreen } from "@/components/states/StateScreen";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import type { Drawing } from "@/features/drawing/types";
-import { currentRound, isLastRound, leaderboard, playerViews, roundResults, toGameRoom } from "@/features/game/engine/selectors";
+import { currentRound } from "@/features/game/engine/selectors";
 import type { Game } from "@/features/game/engine/types";
-import { getPrompt } from "@/features/game/prompts";
 import { useGame, usePhaseSeconds } from "@/hooks/useGame";
+import { useRoundDrawing } from "@/hooks/useRoundDrawing";
 import { clearSession } from "@/services/gameClient";
 
-const EMPTY: Drawing = { strokes: [] };
-
-/** A live game: renders whichever screen the server's phase calls for. */
+/** A live game on the in-memory server: renders whichever screen the server's phase calls for. */
 export function LiveGame({ code }: { code: string }) {
   const router = useRouter();
   const { session, game, me, live, error, send, serverNow } = useGame(code);
@@ -45,24 +36,8 @@ export function LiveGame({ code }: { code: string }) {
   );
   useEffect(() => setCommandError(null), [game?.phase]);
 
-  // The drawing lives here so it survives the DRAWING screen unmounting,
-  // and is handed in once the server says time is up.
-  const round = game ? currentRound(game) : undefined;
-  const roundNumber = round?.number ?? 0;
-  const myDrawing = useRef<Drawing>(EMPTY);
-  const submittedRound = useRef(0);
-  const [handedIn, setHandedIn] = useState<Drawing>(EMPTY);
-  useEffect(() => {
-    myDrawing.current = EMPTY;
-    setHandedIn(EMPTY);
-  }, [roundNumber]);
-  useEffect(() => {
-    if (!game || !me || game.phase !== "TIME_UP" || submittedRound.current === roundNumber) return;
-    submittedRound.current = roundNumber;
-    const drawing = myDrawing.current;
-    setHandedIn(drawing);
-    if (!round?.drawings[me.id]) void send({ type: "SUBMIT_DRAWING", drawing });
-  }, [game, me, round, roundNumber, send]);
+  const submit = useCallback((drawing: Drawing) => void send({ type: "SUBMIT_DRAWING", drawing }), [send]);
+  const drawing = useRoundDrawing(game, me?.id, submit);
 
   if (error || (game && !me)) {
     return (
@@ -106,122 +81,23 @@ export function LiveGame({ code }: { code: string }) {
     );
   }
 
-  const players = playerViews(game, me.id);
-  const isHost = me.id === game.hostId;
-  const prompt = round ? getPrompt(round.promptId) : null;
-  const shownDrawing = round?.drawings[me.id]?.drawing ?? handedIn;
-  const connectedCount = game.players.filter((p) => p.connection === "connected").length;
-
-  let screen: React.ReactNode;
-  switch (game.phase) {
-    case "LOBBY":
-    case "STARTING":
-      screen = (
-        <ScreenContainer>
-          <GameLobby
-            room={toGameRoom(game, me.id)}
-            onStart={() => void run({ type: "START_GAME" })}
-            onToggleReady={() => void run({ type: "SET_READY", ready: !me.isReady })}
-            startingIn={game.phase === "STARTING" ? seconds : null}
-            error={commandError}
-          />
-        </ScreenContainer>
-      );
-      break;
-    case "WHEEL_SPINNING":
-      screen = (
-        <ScreenContainer>
-          <WheelScreen key={roundNumber} round={roundNumber} totalRounds={game.settings.rounds} targetId={round!.promptId} players={players} autoSpin />
-        </ScreenContainer>
-      );
-      break;
-    case "TARGET_REVEALED":
-      screen = (
-        <ScreenContainer className="py-12">
-          <TargetReveal prompt={prompt!} startsIn={seconds} />
-        </ScreenContainer>
-      );
-      break;
-    case "DRAWING":
-      screen = (
-        <ScreenContainer className="py-6 sm:py-8">
-          <DrawScreen
-            key={roundNumber}
-            prompt={prompt!}
-            total={game.settings.drawSeconds}
-            remaining={seconds}
-            players={players}
-            submittedIds={Object.keys(round!.drawings)}
-            onDrawingChange={(d) => (myDrawing.current = d)}
-            onEndRound={isHost ? () => void run({ type: "END_ROUND" }) : undefined}
-          />
-        </ScreenContainer>
-      );
-      break;
-    case "TIME_UP":
-      screen = (
-        <ScreenContainer className="flex flex-col items-center py-14 text-center">
-          <TimesUpScreen strokes={shownDrawing.strokes} submitted={Object.keys(round!.drawings).length} total={connectedCount} />
-        </ScreenContainer>
-      );
-      break;
-    case "EVALUATING":
-      screen = (
-        <ScreenContainer>
-          <EvaluatingScreen key={roundNumber} strokes={shownDrawing.strokes} />
-        </ScreenContainer>
-      );
-      break;
-    case "ROUND_RESULTS": {
-      const results = roundResults(game, round!).map((result) => ({ player: players.find((p) => p.id === result.playerId)!, result }));
-      const last = isLastRound(game);
-      screen = (
-        <ScreenContainer>
-          <RoundResultsScreen
-            round={roundNumber}
-            prompt={prompt!}
-            yours={results.find((r) => r.player.isYou)}
-            others={results.filter((r) => !r.player.isYou)}
-            leaderboard={leaderboard(game, me.id)}
-            action={
-              isHost ? (
-                <Button size="lg" onClick={() => void run({ type: "NEXT_ROUND" })} iconRight={<ArrowRight className="size-4" aria-hidden />}>
-                  {last ? "See final results" : "Next Round"}
-                </Button>
-              ) : (
-                <Button size="lg" disabled>
-                  {last ? "Final results" : "Next round"} in {seconds}s
-                </Button>
-              )
-            }
-          />
-        </ScreenContainer>
-      );
-      break;
-    }
-    case "FINAL_RESULTS":
-      screen = (
-        <FinalResultsScreen
-          leaderboard={leaderboard(game, me.id)}
-          actions={
-            <>
-              <Button href="/create" size="lg" fullWidth iconLeft={<RotateCcw className="size-4" aria-hidden />}>
-                Play again
-              </Button>
-              <Button href="/" variant="secondary" size="lg" fullWidth iconLeft={<Home className="size-4" aria-hidden />}>
-                Home
-              </Button>
-            </>
-          }
-        />
-      );
-      break;
-  }
-
   return (
     <Frame game={game}>
-      <div data-phase={game.phase} data-round={roundNumber}>
-        {screen}
+      <div data-phase={game.phase} data-round={currentRound(game)?.number ?? 0}>
+        <GamePhaseScreen
+          game={game}
+          me={me}
+          seconds={seconds}
+          lobby={{
+            onStart: () => void run({ type: "START_GAME" }),
+            onToggleReady: () => void run({ type: "SET_READY", ready: !me.isReady }),
+            error: commandError,
+          }}
+          onEndRound={() => void run({ type: "END_ROUND" })}
+          onNextRound={() => void run({ type: "NEXT_ROUND" })}
+          onDrawingChange={drawing.onDrawingChange}
+          shownDrawing={drawing.shown}
+        />
       </div>
       {live === "reconnecting" && (
         <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center">

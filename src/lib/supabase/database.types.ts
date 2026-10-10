@@ -1,3 +1,4 @@
+import { GAME_PHASES, type GamePhase } from "@/features/game/state";
 /**
  * Database types for the Supabase client, in the shape `supabase gen types
  * typescript` produces. Written by hand from supabase/migrations; regenerate
@@ -6,19 +7,9 @@
  */
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
-export const GAME_STATUSES = [
-  "LOBBY",
-  "STARTING",
-  "WHEEL_SPINNING",
-  "TARGET_REVEALED",
-  "DRAWING",
-  "TIME_UP",
-  "EVALUATING",
-  "ROUND_RESULTS",
-  "FINAL_RESULTS",
-  "COMPLETED",
-] as const;
-export type GameStatus = (typeof GAME_STATUSES)[number];
+/** Game statuses are the game phases: see features/game/state.ts. */
+export const GAME_STATUSES = GAME_PHASES;
+export type GameStatus = GamePhase;
 
 export const ROUND_STATUSES = ["SPINNING", "REVEALED", "DRAWING", "TIME_UP", "EVALUATING", "COMPLETED"] as const;
 export type RoundStatus = (typeof ROUND_STATUSES)[number];
@@ -35,6 +26,10 @@ export interface Database {
           total_rounds: number;
           created_at: string;
           updated_at: string;
+          phase_started_at: string;
+          phase_ends_at: string | null;
+          draw_seconds: number;
+          state_version: number;
         };
         Insert: {
           id?: string;
@@ -136,6 +131,18 @@ export interface Database {
       start_game: {
         Args: { p_game_id: string };
         Returns: string;
+      };
+      advance_game: {
+        Args: { p_game_id: string; p_expected_version: number };
+        Returns: { advanced: boolean; state_version: number }[];
+      };
+      host_advance: {
+        Args: { p_game_id: string; p_expected_version: number };
+        Returns: { advanced: boolean; state_version: number }[];
+      };
+      get_game_state: {
+        Args: { p_game_id: string };
+        Returns: Json;
       };
       find_open_lobby: {
         Args: { p_room_code: string };

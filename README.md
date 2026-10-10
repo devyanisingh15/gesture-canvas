@@ -94,7 +94,7 @@ type Drawing = { strokes: Stroke[] };
 
 ## Supabase
 
-When the two variables below are set, **Create Game** and **Join Game** store games and players in Supabase and open the lobby at `/lobby/<code>`. Without them, games run in memory as before (`/room/<code>`). The lobby is live: players appear, go offline and leave without a refresh, and the host can start the game. Playing rounds through Supabase comes next.
+When the two variables below are set, **Create Game** and **Join Game** store games and players in Supabase and open the lobby at `/lobby/<code>`. Without them, games run in memory as before (`/room/<code>`). The lobby is live, and the whole game (wheel, reveal, drawing, results, final results) runs from state stored in Postgres. Scoring through Supabase comes next; until then every round scores 0.
 
 1. Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (Supabase dashboard → Project Settings → API). Only the publishable key is used; never put a secret or `service_role` key in a `NEXT_PUBLIC_` variable.
 2. Restart `npm run dev` and open `/api/health/supabase`. `{"ok":true,"project":"…"}` means the URL and key work.
@@ -112,7 +112,9 @@ How the live lobby works (`src/services/lobbyRealtime.ts`): each game has one **
 
 Starting and leaving are database functions: `start_game` refuses anyone but the host and needs 2 players seen in the last minute; `leave_game` frees the seat and hands host to the next player (the last one out deletes the game). Nothing per-frame (camera, hand landmarks, strokes) goes over Realtime.
 
-To test the database functions locally: `psql -d <throwaway db> -q -t -A -f supabase/tests/game_functions_test.sql` (and `lobby_test.sql`) after the stub and the migrations (see `supabase/tests/rls_test.sql` for the setup).
+**Game state.** `src/features/game/state.ts` is the one definition of the phases, the legal transitions and how long each lasts. The database mirrors it (`supabase/migrations/20261010040000_game_state_machine.sql`), and `src/features/game/state.test.ts` fails if the two drift apart. The database is the authority: players can only call `start_game` (host), `advance_game(game, version)` ("this phase's time is up", refused until it is, by the database clock) and `host_advance(game, version)` (end drawing early or skip the results wait). Every change locks the game row and bumps `state_version`, so when every browser's timer fires at once exactly one transition happens; a trigger refuses any status change outside the transition table. Screens are chosen in one place, `src/components/screens/GamePhaseScreen.tsx`, for both backends.
+
+To test the database functions locally: `psql -d <throwaway db> -q -t -A -f supabase/tests/game_functions_test.sql` (and `lobby_test.sql`, `state_machine_test.sql`; `race_test.sh` fires simultaneous transitions from parallel connections) after the stub and the migrations (see `supabase/tests/rls_test.sql` for the setup).
 
 | File | Use from |
 | --- | --- |

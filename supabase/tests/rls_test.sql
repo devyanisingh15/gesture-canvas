@@ -1,6 +1,6 @@
 -- Checks the RLS policies and constraints. Run against a throwaway local Postgres, never a real project:
 --   createdb gc_test && psql -d gc_test -f supabase/tests/local_supabase_stub.sql
---   psql -d gc_test -f supabase/migrations/20261010000000_initial_schema.sql
+--   psql -d gc_test -f supabase/migrations/<each migration, in order>.sql
 --   psql -d gc_test -q -t -A -f supabase/tests/rls_test.sql
 -- Every line should start with PASS.
 \set ON_ERROR_STOP 1
@@ -80,7 +80,11 @@ rollback;
 
 -- The server starts the game: round 1 drawing.
 set role service_role;
-update games set status = 'DRAWING', current_round = 1 where id = :'g1';
+-- Status changes must follow the state machine (see the game_state_machine migration).
+update games set status = 'STARTING' where id = :'g1';
+update games set status = 'WHEEL_SPINNING', current_round = 1 where id = :'g1';
+update games set status = 'TARGET_REVEALED' where id = :'g1';
+update games set status = 'DRAWING' where id = :'g1';
 insert into rounds (id, game_id, round_number, prompt, status, ends_at) values (:'r1', :'g1', 1, 'rocket', 'DRAWING', now() + interval '60 seconds');
 insert into drawings (round_id, player_id, strokes) select :'r1', id, '{"version":1,"strokes":[]}' from players where display_name = 'Ann';
 reset role;
@@ -129,6 +133,8 @@ rollback;
 
 set role service_role;
 update rounds set status = 'COMPLETED' where id = :'r1';
+update games set status = 'TIME_UP' where id = :'g1';
+update games set status = 'EVALUATING' where id = :'g1';
 update games set status = 'ROUND_RESULTS' where id = :'g1';
 reset role;
 

@@ -6,6 +6,7 @@
  * backed by Postgres later.
  */
 import { PROMPTS } from "../prompts";
+import { assertTransition, canTransition, isFinalRound, isInProgress, PHASE_DURATIONS, TRANSITIONS } from "../state";
 import type { PromptId } from "../types";
 import {
   GameError,
@@ -26,36 +27,7 @@ export const NAME_MAX_LENGTH = 16;
 
 export const DEFAULT_SETTINGS: GameSettings = { rounds: 3, drawSeconds: 60, maxPlayers: MAX_PLAYERS };
 
-/** How long timed phases last (ms). DRAWING uses settings.drawSeconds. */
-export const PHASE_DURATIONS = {
-  STARTING: 3_000,
-  WHEEL_SPINNING: 6_000,
-  TARGET_REVEALED: 5_000,
-  TIME_UP: 3_000,
-  /** Shortest time on the evaluation screen, so its animation can play. */
-  EVALUATING_MIN: 4_500,
-  /** Longest wait for scores before missing ones count as zero. */
-  EVALUATING_MAX: 20_000,
-  /** Results auto-advance if the host doesn't press "Next Round". */
-  ROUND_RESULTS: 30_000,
-} as const;
-
-/** Legal phase transitions. Anything else is a bug and throws. */
-export const TRANSITIONS: Record<GamePhase, readonly GamePhase[]> = {
-  LOBBY: ["STARTING"],
-  STARTING: ["WHEEL_SPINNING", "LOBBY", "FINAL_RESULTS"],
-  WHEEL_SPINNING: ["TARGET_REVEALED", "FINAL_RESULTS"],
-  TARGET_REVEALED: ["DRAWING", "FINAL_RESULTS"],
-  DRAWING: ["TIME_UP", "FINAL_RESULTS"],
-  TIME_UP: ["EVALUATING", "FINAL_RESULTS"],
-  EVALUATING: ["ROUND_RESULTS", "FINAL_RESULTS"],
-  ROUND_RESULTS: ["WHEEL_SPINNING", "FINAL_RESULTS"],
-  FINAL_RESULTS: [],
-};
-
-export function canTransition(from: GamePhase, to: GamePhase): boolean {
-  return TRANSITIONS[from].includes(to);
-}
+export { canTransition, PHASE_DURATIONS, TRANSITIONS };
 
 // ---------------------------------------------------------------------------
 // Creation and joining
@@ -144,8 +116,8 @@ export function applyEvent(game: Game, event: GameEvent, ctx: EngineContext): Ga
     }
     case "END_GAME": {
       requireHost(game, event.playerId);
-      if (game.phase === "LOBBY" || game.phase === "FINAL_RESULTS") throw new GameError("WRONG_PHASE", "The game isn't running.");
-      return enterPhase(game, "FINAL_RESULTS", ctx, null);
+      if (!isInProgress(game.phase)) throw new GameError("WRONG_PHASE", "The game isn't running.");
+      return enterFinalResults(game, ctx);
     }
     case "LEAVE": {
       requirePlayer(game, event.playerId);
@@ -197,8 +169,10 @@ function tick(game: Game, ctx: EngineContext): Game {
     }
     case "ROUND_RESULTS":
       return due ? advanceFromResults(game, ctx) : game;
-    case "LOBBY":
     case "FINAL_RESULTS":
+      return due ? enterPhase(game, "COMPLETED", ctx, null) : game;
+    case "LOBBY":
+    case "COMPLETED":
       return game;
   }
 }
@@ -207,10 +181,17 @@ function tick(game: Game, ctx: EngineContext): Game {
 // Transitions
 
 function enterPhase(game: Game, phase: GamePhase, ctx: EngineContext, endsAt: number | null): Game {
-  if (!canTransition(game.phase, phase)) {
-    throw new GameError("WRONG_PHASE", `Can't go from ${game.phase} to ${phase}.`);
+  try {
+    assertTransition(game.phase, phase);
+  } catch (e) {
+    throw new GameError("WRONG_PHASE", (e as Error).message);
   }
   return touch({ ...game, phase, phaseStartedAt: ctx.now, phaseEndsAt: endsAt }, ctx);
+}
+
+/** Ends drawing for the current round (time ran out, or the host ended it). */
+export function endRound(game: Game, ctx: EngineContext): Game {
+  return enterTimeUp(game, ctx);
 }
 
 function enterTimeUp(game: Game, ctx: EngineContext): Game {
@@ -218,7 +199,8 @@ function enterTimeUp(game: Game, ctx: EngineContext): Game {
   return allSubmitted(next) ? enterPhase(next, "EVALUATING", ctx, ctx.now + PHASE_DURATIONS.EVALUATING_MIN) : next;
 }
 
-function startRound(game: Game, ctx: EngineContext): Game {
+/** Starts the next round: picks its prompt and spins the wheel. */
+export function startRound(game: Game, ctx: EngineContext): Game {
   const promptId = pickPrompt(game.usedPromptIds, ctx.random);
   const round: Round = {
     number: game.rounds.length + 1,
@@ -233,8 +215,14 @@ function startRound(game: Game, ctx: EngineContext): Game {
   return enterPhase({ ...game, rounds: [...game.rounds, round], usedPromptIds }, "WHEEL_SPINNING", ctx, ctx.now + PHASE_DURATIONS.WHEEL_SPINNING);
 }
 
-function advanceFromResults(game: Game, ctx: EngineContext): Game {
-  return game.rounds.length >= game.settings.rounds ? enterPhase(game, "FINAL_RESULTS", ctx, null) : startRound(game, ctx);
+/** After a round's results: the next round, or the final results after the last one. */
+export function nextRound(game: Game, ctx: EngineContext): Game {
+  return isFinalRound(game.rounds.length, game.settings.rounds) ? enterFinalResults(game, ctx) : startRound(game, ctx);
+}
+const advanceFromResults = nextRound;
+
+function enterFinalResults(game: Game, ctx: EngineContext): Game {
+  return enterPhase(game, "FINAL_RESULTS", ctx, ctx.now + PHASE_DURATIONS.FINAL_RESULTS);
 }
 
 function removePlayer(game: Game, playerId: string, ctx: EngineContext): Game {
@@ -247,8 +235,7 @@ function removePlayer(game: Game, playerId: string, ctx: EngineContext): Game {
     players = players.map((p) => (p.id === next.id ? { ...p, isHost: true, isReady: true } : p));
   }
   let next = touch({ ...game, players, hostId }, ctx);
-  const inProgress = next.phase !== "LOBBY" && next.phase !== "FINAL_RESULTS";
-  if (inProgress && players.length < MIN_PLAYERS) next = enterPhase(next, "FINAL_RESULTS", ctx, null);
+  if (isInProgress(next.phase) && players.length < MIN_PLAYERS) next = enterFinalResults(next, ctx);
   return next;
 }
 

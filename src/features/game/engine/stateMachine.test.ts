@@ -134,7 +134,11 @@ describe("a full game", () => {
     // Last round: results auto-advance to the final results.
     g = at(g, g.phaseEndsAt!, { type: "TICK" });
     expect(g.phase).toBe("FINAL_RESULTS");
+    // Final results stay up for a while, then the game is closed.
+    g = at(g, g.phaseEndsAt!, { type: "TICK" });
+    expect(g.phase).toBe("COMPLETED");
     expect(g.phaseEndsAt).toBeNull();
+    expect(at(g, g.updatedAt + 3_600_000, { type: "TICK" })).toBe(g);
   });
 
   it("rejects commands in the wrong phase", () => {
@@ -181,7 +185,7 @@ describe("prompt selection", () => {
     expect(new Set(used).size).toBe(PROMPTS.length);
   });
 
-  it("every phase can be left, except FINAL_RESULTS", () => {
-    for (const [phase, next] of Object.entries(TRANSITIONS)) expect(next.length > 0).toBe(phase !== "FINAL_RESULTS");
+  it("every phase can be left, except COMPLETED", () => {
+    for (const [phase, next] of Object.entries(TRANSITIONS)) expect(next.length > 0).toBe(phase !== "COMPLETED");
   });
 });

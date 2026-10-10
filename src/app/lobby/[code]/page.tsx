@@ -1,6 +1,6 @@
-import { SupabaseLobby } from "./SupabaseLobby";
+import { SupabaseGame } from "./SupabaseGame";
 
-export default async function LobbyPage({ params }: { params: Promise<{ code: string }> }) {
+export default async function GamePage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
-  return <SupabaseLobby code={code.toUpperCase()} />;
+  return <SupabaseGame code={code.toUpperCase()} />;
 }

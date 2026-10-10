@@ -1,6 +1,7 @@
 /** Read-only views of a Game for the UI. */
 import { getPrompt } from "../prompts";
 import type { DrawingPrompt, GameRoom, LeaderboardEntry, PlayerRoundResult, PlayerView } from "../types";
+import { isFinalRound } from "../state";
 import { currentRound } from "./stateMachine";
 import type { Game, Player, Round } from "./types";
 
@@ -90,5 +91,5 @@ export function roundResults(game: Game, round: Round): PlayerRoundResult[] {
 }
 
 export function isLastRound(game: Game): boolean {
-  return game.rounds.length >= game.settings.rounds;
+  return isFinalRound(game.rounds.length, game.settings.rounds);
 }
