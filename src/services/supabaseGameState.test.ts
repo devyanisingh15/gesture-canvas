@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { leaderboard } from "@/features/game/engine/selectors";
 
 vi.mock("@/lib/supabase/client", () => ({ getSupabaseBrowserClient: () => ({}) }));
 const { parseSnapshot, toEngineGame } = await import("./supabaseGameState");
@@ -19,6 +20,10 @@ const raw = {
     { round_id: "r1", player_id: "p1", score: 40, breakdown: null },
     { round_id: "r1", player_id: "p2", score: 70, breakdown: { structure: 60, completeness: 70, composition: 80, feedback: "Nice.", evaluator: "mvp-geometry-v1" } },
     { round_id: "r1", player_id: "p3", score: 55, breakdown: { shapeScore: 90, structureScore: 50, completenessScore: 45, compositionScore: 35 } },
+  ],
+  standings: [
+    { player_id: "p2", total: 70, round_score: 70, rank: 1, previous_rank: null, rounds_counted: 1 },
+    { player_id: "p1", total: 40, round_score: 40, rank: 2, previous_rank: null, rounds_counted: 1 },
   ],
 };
 
@@ -52,6 +57,20 @@ describe("toEngineGame", () => {
   it("shows players without presence as offline", () => {
     const g = toEngineGame(parseSnapshot(raw)!, "p1", new Set(["p1"]), true);
     expect(g.players.find((p) => p.id === "p2")!.connection).toBe("disconnected");
+  });
+});
+
+describe("leaderboard", () => {
+  it("is the database's standings, in its order, never recomputed here", () => {
+    const g = toEngineGame(parseSnapshot(raw)!, "p1", null, true);
+    expect(g.standings).toEqual([
+      { playerId: "p2", total: 70, roundScore: 70, rank: 1, previousRank: null },
+      { playerId: "p1", total: 40, roundScore: 40, rank: 2, previousRank: null },
+    ]);
+    expect(leaderboard(g, "p1").map((e) => [e.player.name, e.totalScore, e.lastRoundScore, e.rank, e.player.isYou])).toEqual([
+      ["Ben", 70, 70, 1, false],
+      ["Maya", 40, 40, 2, true],
+    ]);
   });
 });
 

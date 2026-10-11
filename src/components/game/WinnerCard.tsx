@@ -3,8 +3,12 @@ import { Sparkle, Star } from "@/components/art/Decorations";
 import { Avatar } from "@/components/ui/Avatar";
 import type { LeaderboardEntry } from "@/features/game/types";
 
-/** Podium card for the final winner. */
-export function WinnerCard({ entry }: { entry: LeaderboardEntry }) {
+/** Podium card for the final winner, or the joint winners when the top totals tie. */
+export function WinnerCard({ entries }: { entries: LeaderboardEntry[] }) {
+  const [entry] = entries;
+  if (!entry) return null;
+  const tie = entries.length > 1;
+  const you = entries.some((e) => e.player.isYou);
   return (
     <div className="relative mx-auto flex max-w-sm flex-col items-center rounded-[32px] border-4 border-white bg-gradient-to-b from-sun-100 to-sun-200 px-8 pb-8 pt-12 text-center shadow-clay-sun animate-pop">
       <span className="absolute -top-8 flex size-16 items-center justify-center rounded-2xl bg-gradient-to-b from-violet-400 to-violet-600 shadow-clay-violet">
@@ -12,9 +16,15 @@ export function WinnerCard({ entry }: { entry: LeaderboardEntry }) {
       </span>
       <Star className="absolute -left-4 top-10 size-8 animate-float" />
       <Sparkle className="absolute -right-3 top-16 size-6 text-violet-300" />
-      <Avatar name={entry.player.name} color={entry.player.avatar} size="xl" />
-      <p className="mt-4 text-[11px] font-extrabold uppercase tracking-[0.18em] text-sun-600">Winner</p>
-      <h2 className="mt-1 text-4xl font-bold text-plum-700">{entry.player.isYou ? "You win!" : entry.player.name}</h2>
+      <div className="flex -space-x-3">
+        {entries.map((e) => (
+          <Avatar key={e.player.id} name={e.player.name} color={e.player.avatar} size="xl" />
+        ))}
+      </div>
+      <p className="mt-4 text-[11px] font-extrabold uppercase tracking-[0.18em] text-sun-600">{tie ? "It's a tie" : "Winner"}</p>
+      <h2 className="mt-1 text-4xl font-bold text-plum-700">
+        {tie ? entries.map((e) => (e.player.isYou ? "You" : e.player.name)).join(" & ") : you ? "You win!" : entry.player.name}
+      </h2>
       <p className="mt-2 font-display text-lg font-semibold text-plum-500">
         <span className="text-3xl font-bold text-mint-600">{entry.totalScore}</span> points
       </p>

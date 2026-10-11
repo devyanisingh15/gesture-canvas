@@ -4,6 +4,7 @@
  * GameState snapshot and send GameCommands.
  */
 import type { Drawing } from "@/features/drawing/types";
+import type { Standing } from "../standings";
 import type { AvatarColor, ConnectionStatus, GamePhase, PromptId, ScoreBreakdown } from "../types";
 
 export type { Drawing, GamePhase };
@@ -65,6 +66,12 @@ export interface Game {
   updatedAt: number;
   /** Increments on every change; clients ignore stale snapshots. */
   version: number;
+  /**
+   * The leaderboard over the rounds revealed so far, worked out by the server
+   * (the database, for Supabase games) when it sends the state. The engine
+   * doesn't keep it.
+   */
+  standings?: Standing[];
 }
 
 /** What clients receive: the game plus the server clock, for countdowns. */

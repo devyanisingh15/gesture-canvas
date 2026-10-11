@@ -21,7 +21,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ code
   let initial: GameState;
   try {
     disconnect = await service.connect(session);
-    initial = await service.getState(code);
+    initial = await service.getState(code, session.playerId);
   } catch (error) {
     return errorResponse(error);
   }
@@ -42,7 +42,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ code
         } catch {
           cleanup();
         }
-      });
+      }, session.playerId);
       const heartbeat = setInterval(() => {
         try {
           controller.enqueue(encoder.encode(`: ping\n\n`));

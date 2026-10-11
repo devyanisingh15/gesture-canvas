@@ -146,7 +146,17 @@ The MVP evaluator (`src/features/evaluation/mvpEvaluator.ts`, id `mvp-geometry-v
 
 To use another evaluator (computer vision, an AI model), implement `DrawingEvaluator`, add it to `src/server/evaluation/evaluators.ts` and set `DRAWING_EVALUATOR` to its id on the server. Read any API key it needs from a server environment variable, never a `NEXT_PUBLIC_` one. The game, the database and the screens stay as they are.
 
-To test the database functions locally: `psql -d <throwaway db> -q -t -A -f supabase/tests/game_functions_test.sql` (and `lobby_test.sql`, `state_machine_test.sql`, `wheel_test.sql`, `timed_rounds_test.sql`, `drawing_submission_test.sql`, `evaluation_test.sql`; `race_test.sh` fires simultaneous transitions from parallel connections) after the stub and the migrations (see `supabase/tests/rls_test.sql` for the setup).
+### Results and the leaderboard
+
+When a round's scores are in, the database moves it to ROUND_RESULTS and marks the round COMPLETED. Only then do its drawings and scores become visible to players (row-level security), so nothing is revealed early.
+
+- **Round results** show the prompt, your drawing and score breakdown, everyone else's drawing and score, and the leaderboard: each player's total, this round's points and rank change. The host's Next Round button (or the 30 s timer) moves everyone on; other players see the countdown.
+- **Final results** show the final leaderboard and the winner. When the top totals tie, every player on that total is shown as a winner.
+- **Totals come from the database.** `public.get_standings(game)` sums each player's stored scores over completed rounds and ranks them. `get_game_state` includes it, so every player gets the same leaderboard with each state change (Realtime tells clients to re-read), including after a refresh or reconnect. The browser only displays it (`leaderboard()` in `src/features/game/engine/selectors.ts`).
+- **Ties:** equal totals share a rank (1, 1, 3). Among them the earlier joiner is listed first, then the lower player id, so the same scores always give the same order.
+- In-memory games (no Supabase) follow the same rules on the game server (`src/server/game/view.ts`, `src/features/game/standings.ts`): until a round's results show, each player is sent only their own drawing and no scores.
+
+To test the database functions locally: `psql -d <throwaway db> -q -t -A -f supabase/tests/game_functions_test.sql` (and `lobby_test.sql`, `state_machine_test.sql`, `wheel_test.sql`, `timed_rounds_test.sql`, `drawing_submission_test.sql`, `evaluation_test.sql`, `standings_test.sql`; `race_test.sh` fires simultaneous transitions from parallel connections) after the stub and the migrations (see `supabase/tests/rls_test.sql` for the setup).
 
 | File | Use from |
 | --- | --- |

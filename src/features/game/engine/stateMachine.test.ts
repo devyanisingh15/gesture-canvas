@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PROMPTS } from "../prompts";
+import { viewFor } from "@/server/game/view";
 import { leaderboard } from "./selectors";
 import { SUBMIT_GRACE_MS } from "../state";
 import { addPlayer, applyEvent, createGame, currentRound, PHASE_DURATIONS, pickPrompt, TRANSITIONS } from "./stateMachine";
@@ -138,7 +139,7 @@ describe("a full game", () => {
     expect(g.phase).toBe("EVALUATING");
     g = at(g, evalStart + PHASE_DURATIONS.EVALUATING_MIN, { type: "TICK" });
     expect(g.phase).toBe("ROUND_RESULTS");
-    expect(leaderboard(g, "h").map((e) => [e.player.id, e.totalScore, e.rank])).toEqual([["h", 90, 1], ["m", 70, 2]]);
+    expect(leaderboard(viewFor(g, "h", 0).game, "h").map((e) => [e.player.id, e.totalScore, e.rank])).toEqual([["h", 90, 1], ["m", 70, 2]]);
 
     // Host moves to round 2 with a different prompt.
     expectError(() => at(g, g.phaseStartedAt + 1, { type: "NEXT_ROUND", playerId: "m" }), "NOT_HOST");

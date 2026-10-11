@@ -13,6 +13,7 @@ import {
 } from "@/features/game/engine/types";
 import { CODE_ALPHABET, CODE_LENGTH, type ClientCommand, type PlayerSession, type SessionResponse } from "@/features/game/protocol";
 import type { GameRecord, GameRepository } from "./repository";
+import { viewFor } from "./view";
 
 export interface GameServiceDeps {
   repo: GameRepository;
@@ -27,6 +28,11 @@ export interface GameServiceDeps {
 }
 
 type Listener = (state: GameState) => void;
+interface Subscriber {
+  listener: Listener;
+  /** Whose view of the game it gets (see viewFor). */
+  viewerId: string | null;
+}
 
 /**
  * Runs games on the server: the only place that changes game state. Every
@@ -43,7 +49,7 @@ export class GameService {
   private readonly disconnectGraceMs: number;
   private readonly idleTtlMs: number;
 
-  private readonly listeners = new Map<string, Set<Listener>>();
+  private readonly listeners = new Map<string, Set<Subscriber>>();
   /** Open live connections per player, keyed `${code}:${playerId}`. */
   private readonly connections = new Map<string, number>();
   private readonly locks = new Map<string, Promise<unknown>>();
@@ -68,7 +74,7 @@ export class GameService {
     const game = createGame(host, settings, { gameId: this.newId(), hostId, code }, this.ctx());
     const token = this.newId();
     await this.repo.save({ game, tokens: { [hostId]: token } });
-    return { session: { code, playerId: hostId, token }, state: this.snapshot(game) };
+    return { session: { code, playerId: hostId, token }, state: this.snapshot(game, hostId) };
   }
 
   async joinGame(code: string, input: JoinInput): Promise<SessionResponse> {
@@ -78,11 +84,12 @@ export class GameService {
       game: addPlayer(r.game, input, playerId, this.ctx()),
       tokens: { ...r.tokens, [playerId]: token },
     }));
-    return { session: { code: record.game.code, playerId, token }, state: this.snapshot(record.game) };
+    return { session: { code: record.game.code, playerId, token }, state: this.snapshot(record.game, playerId) };
   }
 
-  async getState(code: string): Promise<GameState> {
-    return this.snapshot((await this.load(code)).game);
+  /** The game as `viewerId` may see it (null: someone not in the game). */
+  async getState(code: string, viewerId: string | null = null): Promise<GameState> {
+    return this.snapshot((await this.load(code)).game, viewerId);
   }
 
   // -------------------------------------------------------------------------
@@ -99,20 +106,21 @@ export class GameService {
       }
       return { ...r, game };
     });
-    return this.snapshot(record.game);
+    return this.snapshot(record.game, session.playerId);
   }
 
   // -------------------------------------------------------------------------
   // Live updates
 
-  /** Calls `listener` with every new state of the game. Returns an unsubscribe function. */
-  subscribe(code: string, listener: Listener): () => void {
+  /** Calls `listener` with every new state of the game, as `viewerId` may see it. Returns an unsubscribe function. */
+  subscribe(code: string, listener: Listener, viewerId: string | null = null): () => void {
     const key = code.toUpperCase();
     const set = this.listeners.get(key) ?? new Set();
-    set.add(listener);
+    const subscriber = { listener, viewerId };
+    set.add(subscriber);
     this.listeners.set(key, set);
     return () => {
-      set.delete(listener);
+      set.delete(subscriber);
       if (set.size === 0) this.listeners.delete(key);
     };
   }
@@ -184,8 +192,8 @@ export class GameService {
     return { now: this.now(), random: this.random };
   }
 
-  private snapshot(game: Game): GameState {
-    return { game, serverTime: this.now() };
+  private snapshot(game: Game, viewerId: string | null): GameState {
+    return viewFor(game, viewerId, this.now());
   }
 
   private async load(code: string): Promise<GameRecord> {
@@ -231,10 +239,9 @@ export class GameService {
   }
 
   private publish(game: Game): void {
-    const state = this.snapshot(game);
-    for (const listener of this.listeners.get(game.code) ?? []) {
+    for (const { listener, viewerId } of this.listeners.get(game.code) ?? []) {
       try {
-        listener(state);
+        listener(this.snapshot(game, viewerId));
       } catch {
         // A broken listener must not stop the others.
       }
