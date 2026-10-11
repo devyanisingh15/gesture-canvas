@@ -2,11 +2,10 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import type { ScoreBreakdown } from "@/features/game/types";
 
 export const BREAKDOWN_ROWS = [
-  { key: "shapeScore", label: "Shape", tone: "violet" },
   { key: "structureScore", label: "Structure", tone: "pink" },
   { key: "completenessScore", label: "Completeness", tone: "sun" },
   { key: "compositionScore", label: "Composition", tone: "mint" },
-] as const satisfies ReadonlyArray<{ key: keyof ScoreBreakdown; label: string; tone: string }>;
+] as const satisfies ReadonlyArray<{ key: Exclude<keyof ScoreBreakdown, "feedback" | "totalScore">; label: string; tone: string }>;
 
 export function ScoreBreakdownList({ score }: { score: ScoreBreakdown }) {
   return (

@@ -17,7 +17,8 @@ const raw = {
   drawings: [{ round_id: "r1", player_id: "p2", strokes: { version: 1, strokes: [{ id: "s", points: [] }] }, submitted_at: "2026-10-10T11:59:51.000Z" }],
   scores: [
     { round_id: "r1", player_id: "p1", score: 40, breakdown: null },
-    { round_id: "r1", player_id: "p2", score: 70, breakdown: { shapeScore: 90, structureScore: 60, completenessScore: 70, compositionScore: 60 } },
+    { round_id: "r1", player_id: "p2", score: 70, breakdown: { structure: 60, completeness: 70, composition: 80, feedback: "Nice.", evaluator: "mvp-geometry-v1" } },
+    { round_id: "r1", player_id: "p3", score: 55, breakdown: { shapeScore: 90, structureScore: 50, completenessScore: 45, compositionScore: 35 } },
   ],
 };
 
@@ -57,7 +58,11 @@ describe("toEngineGame", () => {
 describe("scores", () => {
   it("shows the server's breakdown, or the total for every part when there is none", () => {
     const g = toEngineGame(parseSnapshot(raw)!, "p2", null, true);
-    expect(g.rounds[0]!.scores.p2).toMatchObject({ totalScore: 70, shapeScore: 90, structureScore: 60 });
-    expect(g.rounds[0]!.scores.p1).toMatchObject({ totalScore: 40, shapeScore: 40, compositionScore: 40 });
+    expect(g.rounds[0]!.scores.p2).toEqual({
+      playerId: "p2", roundNumber: 1, totalScore: 70, structureScore: 60, completenessScore: 70, compositionScore: 80, feedback: "Nice.",
+    });
+    // Rows stored before the evaluation service used the screen's names.
+    expect(g.rounds[0]!.scores.p3).toMatchObject({ totalScore: 55, structureScore: 50, completenessScore: 45, compositionScore: 35 });
+    expect(g.rounds[0]!.scores.p1).toMatchObject({ totalScore: 40, structureScore: 40, compositionScore: 40 });
   });
 });

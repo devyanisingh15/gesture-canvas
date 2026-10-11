@@ -1,4 +1,5 @@
 import type { DrawingEvaluator } from "@/features/evaluation/types";
+import { evaluateDrawing } from "@/server/evaluation/evaluationService";
 import { addPlayer, applyEvent, createGame, currentRound, findPlayer, zeroScore } from "@/features/game/engine/stateMachine";
 import {
   GameError,
@@ -248,12 +249,17 @@ export class GameService {
       game.players.map(async (p): Promise<Score> => {
         const submitted = round.drawings[p.id];
         if (!submitted) return zeroScore(p.id, round.number);
-        try {
-          const score = await this.evaluator.evaluate({ promptId: round.promptId, drawing: submitted.drawing });
-          return { ...score, playerId: p.id, roundNumber: round.number };
-        } catch {
-          return zeroScore(p.id, round.number);
-        }
+        const result = await evaluateDrawing(this.evaluator, round.promptId, submitted.drawing);
+        const score: Score = {
+          playerId: p.id,
+          roundNumber: round.number,
+          totalScore: result.score,
+          structureScore: result.breakdown.structure,
+          completenessScore: result.breakdown.completeness,
+          compositionScore: result.breakdown.composition,
+        };
+        if (result.feedback) score.feedback = result.feedback;
+        return score;
       }),
     ).then((scores) =>
       this.mutate(game.code, (r) => ({

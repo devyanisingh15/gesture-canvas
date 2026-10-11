@@ -71,4 +71,20 @@ won=$(grep -lx 't' "$out"/* | wc -l)
 [ "$(state)" = "TIME_UP r1 v5" ] && pass "game is in TIME_UP once: $(state)" || fail "after race: $(state)"
 rm -r "$out"
 
+# 4. A hand-in still being saved when the round moves on to EVALUATING: the move
+#    waits for it, so the evaluator sees the drawing.
+expire
+drawing='{"version":1,"strokes":[{"id":"late","points":[{"x":0.1,"y":0.1,"timestamp":1760000000000},{"x":0.5,"y":0.5,"timestamp":1760000000033}]}]}'
+round=$(q -c "select r.id from public.rounds r join public.games g on g.id = r.game_id and r.round_number = g.current_round where g.id = '$game';")
+out=$(mktemp -d)
+( as_user "$guest" "select public.submit_drawing('$round', '$drawing') is not null; select pg_sleep(1.5);" >"$out/submit" 2>&1; date +%s.%N >"$out/submit_done" ) &
+sleep 0.5
+as_user "$host" "select advanced from public.advance_game('$game', $(ver));" >"$out/advance" 2>&1; date +%s.%N >"$out/advance_done"
+wait
+[ "$(head -1 "$out/advance")" = "t" ] && [ "$(state | cut -d' ' -f1)" = "EVALUATING" ] && pass "the round moved on to EVALUATING" || fail "advance: $(cat "$out/advance"), $(state)"
+[ "$(awk '{print ($1 >= $2)}' <(paste "$out/advance_done" "$out/submit_done"))" = 1 ] && pass "it waited for the hand-in being saved" || fail "it didn't wait for the hand-in"
+seen=$(q -c "select jsonb_array_length(public.evaluation_batch('$round') -> 'drawings');")
+[ "$(head -1 "$out/submit")" = "t" ] && [ "$seen" = 1 ] && pass "the drawing was accepted and the evaluator sees it" || fail "submit: $(cat "$out/submit"), drawings seen: $seen"
+rm -r "$out"
+
 exit $status

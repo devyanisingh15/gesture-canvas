@@ -8,7 +8,7 @@ import { GameError, type EngineContext, type Game, type GameEvent, type Score } 
 const ctx = (now: number, random = () => 0.5): EngineContext => ({ now, random });
 const drawing = { strokes: [{ id: "s", points: [{ x: 0.1, y: 0.1, timestamp: 1_760_000_000_000 }, { x: 0.9, y: 0.9, timestamp: 1_760_000_000_033 }] }] };
 const score = (playerId: string, total: number): Score => ({
-  playerId, roundNumber: 1, shapeScore: total, structureScore: total, completenessScore: total, compositionScore: total, totalScore: total,
+  playerId, roundNumber: 1, structureScore: total, completenessScore: total, compositionScore: total, totalScore: total,
 });
 
 function newGame(rounds = 2): Game {

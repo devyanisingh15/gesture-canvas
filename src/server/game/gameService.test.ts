@@ -7,7 +7,12 @@ import { InMemoryGameRepository } from "./repository";
 
 const drawing = { strokes: [{ id: "a", points: [{ x: 0.2, y: 0.2, timestamp: 1_760_000_000_000 }, { x: 0.8, y: 0.8, timestamp: 1_760_000_000_033 }] }] };
 
-function setup(evaluator: DrawingEvaluator = { evaluate: async () => ({ shapeScore: 80, structureScore: 80, completenessScore: 80, compositionScore: 80, totalScore: 80 }) }) {
+const fixed: DrawingEvaluator = {
+  id: "fixed",
+  evaluate: async () => ({ score: 80, breakdown: { structure: 80, completeness: 80, composition: 80 }, feedback: "Nice." }),
+};
+
+function setup(evaluator: DrawingEvaluator = fixed) {
   let now = 1_000;
   let id = 0;
   const service = new GameService({
@@ -110,7 +115,7 @@ describe("GameService", () => {
   });
 
   it("falls back to zero when the evaluator fails", async () => {
-    const { service, advance } = setup({ evaluate: async () => Promise.reject(new Error("model down")) });
+    const { service, advance } = setup({ id: "broken", evaluate: async () => Promise.reject(new Error("model down")) });
     const host = await service.createGame({ name: "Host", avatar: "violet" }, { rounds: 1, drawSeconds: 10 });
     const guest = await service.joinGame(host.session.code, { name: "Maya", avatar: "pink" });
     await service.dispatch(guest.session, { type: "SET_READY", ready: true });

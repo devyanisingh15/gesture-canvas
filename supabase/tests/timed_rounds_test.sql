@@ -140,7 +140,7 @@ select pg_temp.expect_eq(
 insert into t select 'ann', id::text from public.players where game_id = pg_temp.gid() and display_name = 'Ann';
 insert into t select 'ben', id::text from public.players where game_id = pg_temp.gid() and display_name = 'Ben';
 select pg_temp.expect_eq(public.record_scores(pg_temp.rid(), jsonb_build_array(
-  jsonb_build_object('player_id', (select v from t where k = 'ann'), 'score', 150, 'breakdown', jsonb_build_object('shapeScore', 90)),
+  jsonb_build_object('player_id', (select v from t where k = 'ann'), 'score', 150, 'breakdown', jsonb_build_object('structure', 90, 'shapeScore', 90)),
   jsonb_build_object('player_id', (select v from t where k = 'ben'), 'score', 41.6)))::text, 'true', 'the server records the scores');
 select pg_temp.expect_eq(public.record_scores(pg_temp.rid(), '[]')::text, 'false', 'a second recording does nothing');
 select pg_temp.expect_eq(
@@ -157,7 +157,7 @@ select pg_temp.expire() \g /dev/null
 select pg_temp.expect_eq(pg_temp.adv(), 'true', 'on to the results');
 select pg_temp.expect_eq(pg_temp.state(), 'ROUND_RESULTS r1', 'ROUND_RESULTS');
 select pg_temp.expect_eq(
-  (select string_agg((x ->> 'score') || coalesce(' ' || (x -> 'breakdown' ->> 'shapeScore'), ''), ',' order by (x ->> 'score')::int desc)
+  (select string_agg((x ->> 'score') || coalesce(' ' || (x -> 'breakdown' ->> 'structure'), '') || coalesce(' ' || (x -> 'breakdown' ->> 'shapeScore'), ''), ',' order by (x ->> 'score')::int desc)
      from jsonb_array_elements(public.get_game_state(pg_temp.gid()) -> 'scores') x),
   '100 90,42,0', 'players now see the scores, with the breakdown');
 

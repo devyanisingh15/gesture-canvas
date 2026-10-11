@@ -55,21 +55,20 @@ export function mockStrokes(promptId: PromptId, seed: number, wobble = 2.2, colo
   }));
 }
 
-function breakdown(shape: number, structure: number, completeness: number, composition: number): ScoreBreakdown {
+function breakdown(structure: number, completeness: number, composition: number): ScoreBreakdown {
   return {
-    shapeScore: shape,
     structureScore: structure,
     completenessScore: completeness,
     compositionScore: composition,
-    totalScore: Math.round((shape + structure + completeness + composition) / 4),
+    totalScore: Math.round(0.4 * structure + 0.35 * completeness + 0.25 * composition),
   };
 }
 
 export const MOCK_ROUND_RESULTS: PlayerRoundResult[] = [
-  { playerId: "p1", strokes: mockStrokes("rocket", 7, 1.6), score: breakdown(96, 94, 95, 91) },
-  { playerId: "p2", strokes: mockStrokes("rocket", 13, 3), score: breakdown(90, 86, 88, 84) },
-  { playerId: "p3", strokes: mockStrokes("rocket", 29, 4.5).slice(0, 6), score: breakdown(78, 72, 66, 80) },
-  { playerId: "p4", strokes: mockStrokes("rocket", 41, 6).slice(0, 4), score: breakdown(61, 55, 48, 64) },
+  { playerId: "p1", strokes: mockStrokes("rocket", 7, 1.6), score: breakdown(94, 95, 91) },
+  { playerId: "p2", strokes: mockStrokes("rocket", 13, 3), score: breakdown(86, 88, 84) },
+  { playerId: "p3", strokes: mockStrokes("rocket", 29, 4.5).slice(0, 6), score: breakdown(72, 66, 80) },
+  { playerId: "p4", strokes: mockStrokes("rocket", 41, 6).slice(0, 4), score: breakdown(55, 48, 64) },
 ];
 
 export const MOCK_LEADERBOARD: LeaderboardEntry[] = [

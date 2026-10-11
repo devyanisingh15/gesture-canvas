@@ -1,4 +1,4 @@
-import { placeholderEvaluator } from "@/features/evaluation/placeholderEvaluator";
+import { getEvaluator } from "@/server/evaluation/evaluators";
 import { GameService } from "./gameService";
 import { InMemoryGameRepository } from "./repository";
 
@@ -12,7 +12,7 @@ const globalForGames = globalThis as typeof globalThis & { __gestureCanvasGames?
  */
 export function getGameService(): GameService {
   if (!globalForGames.__gestureCanvasGames) {
-    const service = new GameService({ repo: new InMemoryGameRepository(), evaluator: placeholderEvaluator });
+    const service = new GameService({ repo: new InMemoryGameRepository(), evaluator: getEvaluator() });
     service.startClock();
     globalForGames.__gestureCanvasGames = service;
   }

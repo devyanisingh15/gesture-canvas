@@ -304,7 +304,7 @@ function fillMissingScores(game: Game): Game {
 }
 
 export function zeroScore(playerId: string, roundNumber: number): Score {
-  return { playerId, roundNumber, shapeScore: 0, structureScore: 0, completenessScore: 0, compositionScore: 0, totalScore: 0 };
+  return { playerId, roundNumber, structureScore: 0, completenessScore: 0, compositionScore: 0, totalScore: 0 };
 }
 
 function replaceCurrentRound(game: Game, round: Round): Game {

@@ -86,7 +86,7 @@ export function roundResults(game: Game, round: Round): PlayerRoundResult[] {
   return game.players.map((p) => ({
     playerId: p.id,
     strokes: round.drawings[p.id]?.drawing.strokes ?? [],
-    score: round.scores[p.id] ?? { shapeScore: 0, structureScore: 0, completenessScore: 0, compositionScore: 0, totalScore: 0 },
+    score: round.scores[p.id] ?? { structureScore: 0, completenessScore: 0, compositionScore: 0, totalScore: 0 },
   }));
 }
 

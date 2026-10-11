@@ -39,12 +39,14 @@ export interface PlayerView {
 
 export type { Drawing, Point, Stroke } from "@/features/drawing/types";
 
+/** A player's score for a round, as the evaluator gave it (each part 0–100). */
 export interface ScoreBreakdown {
-  shapeScore: number;
   structureScore: number;
   completenessScore: number;
   compositionScore: number;
   totalScore: number;
+  /** The evaluator's one-line note, when it gave one. */
+  feedback?: string;
 }
 
 export interface PlayerRoundResult {

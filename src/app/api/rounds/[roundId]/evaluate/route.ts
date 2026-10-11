@@ -1,21 +1,24 @@
-import { placeholderEvaluator } from "@/features/evaluation/placeholderEvaluator";
-import type { Json } from "@/lib/supabase/database.types";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { parseBatch, scoreRound } from "@/server/evaluation/scoreRound";
+import { evaluateRound } from "@/server/evaluation/evaluationService";
+import { getEvaluator } from "@/server/evaluation/evaluators";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const FAILED = { check: "Couldn't check the round.", read: "Couldn't read the drawings.", store: "Couldn't store the scores." };
+
 /**
  * POST /api/rounds/:roundId/evaluate: scores a round that is in EVALUATING.
  *
  * Any player in the game may ask (checked by the database, as that player).
- * The drawings are read and the scores written with the server's secret key,
- * since players can't write scores. Safe to call many times: a round is
- * scored once, and later calls do nothing.
+ * Nothing in the request is trusted beyond the round id: the prompt, the
+ * drawings and the players come from the database, and the scores are
+ * computed here and written with the server's secret key, since players
+ * can't write scores. Safe to call many times: a round is scored once, and
+ * later calls do nothing.
  *
  * 200 { scored: boolean }: scored is false when there was nothing to do.
  * 503: no secret key on this server; the round ends with zeros after the wait.
@@ -27,19 +30,15 @@ export async function POST(_request: Request, { params }: { params: Promise<{ ro
   const admin = getSupabaseAdminClient();
   if (!admin) return Response.json({ error: "Scoring isn't set up on this server." }, { status: 503 });
 
-  // As the signed-in player: are they in this game, and does the round need scoring?
-  const player = await createSupabaseServerClient();
-  const asked = await player.rpc("request_evaluation", { p_round_id: roundId });
-  if (asked.error) return Response.json({ error: "Couldn't check the round." }, { status: asked.error.code === "42501" ? 403 : 502 });
-  if (!asked.data) return Response.json({ scored: false });
-
-  const batch = await admin.rpc("evaluation_batch", { p_round_id: roundId });
-  if (batch.error) return Response.json({ error: "Couldn't read the drawings." }, { status: 502 });
-  const parsed = parseBatch(batch.data);
-  if (!parsed) return Response.json({ scored: false });
-
-  const scores = await scoreRound(parsed, placeholderEvaluator);
-  const recorded = await admin.rpc("record_scores", { p_round_id: roundId, p_scores: scores as unknown as Json });
-  if (recorded.error) return Response.json({ error: "Couldn't store the scores." }, { status: 502 });
-  return Response.json({ scored: recorded.data === true });
+  const outcome = await evaluateRound(roundId, { player: await createSupabaseServerClient(), admin, evaluator: getEvaluator() });
+  switch (outcome.status) {
+    case "scored":
+      return Response.json({ scored: true });
+    case "nothing-to-do":
+      return Response.json({ scored: false });
+    case "forbidden":
+      return Response.json({ error: FAILED.check }, { status: 403 });
+    case "failed":
+      return Response.json({ error: FAILED[outcome.step] }, { status: 502 });
+  }
 }

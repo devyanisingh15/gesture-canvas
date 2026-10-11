@@ -100,14 +100,21 @@ export function parseSnapshot(raw: Json): GameSnapshot | null {
   };
 }
 
-const BREAKDOWN_KEYS = ["shapeScore", "structureScore", "completenessScore", "compositionScore"] as const;
+/** scores.breakdown keys (the evaluator's names), and the names rows stored before the evaluation service used. */
+const BREAKDOWN_KEYS = [
+  ["structure", "structureScore"],
+  ["completeness", "completenessScore"],
+  ["composition", "compositionScore"],
+] as const;
 function parseBreakdown(v: unknown): Partial<ScoreBreakdown> | null {
   if (!v || typeof v !== "object") return null;
+  const row = v as Row;
   const out: Partial<ScoreBreakdown> = {};
-  for (const k of BREAKDOWN_KEYS) {
-    const n = Number((v as Row)[k]);
-    if (Number.isFinite(n)) out[k] = n;
+  for (const [key, uiKey] of BREAKDOWN_KEYS) {
+    const n = Number(row[key] ?? row[uiKey]);
+    if (Number.isFinite(n)) out[uiKey] = n;
   }
+  if (typeof row.feedback === "string" && row.feedback) out.feedback = row.feedback;
   return out;
 }
 
@@ -146,16 +153,16 @@ export function toEngineGame(snap: GameSnapshot, meId: string, online: ReadonlyS
     for (const s of snap.scores) {
       if (s.roundId !== r.id) continue;
       // Rounds nobody scored have no breakdown: every part is the total (0).
-      const part = (k: (typeof BREAKDOWN_KEYS)[number]) => s.breakdown?.[k] ?? s.score;
+      const part = (k: (typeof BREAKDOWN_KEYS)[number][1]) => s.breakdown?.[k] ?? s.score;
       const score: Score = {
         playerId: s.playerId,
         roundNumber: r.number,
         totalScore: s.score,
-        shapeScore: part("shapeScore"),
         structureScore: part("structureScore"),
         completenessScore: part("completenessScore"),
         compositionScore: part("compositionScore"),
       };
+      if (s.breakdown?.feedback) score.feedback = s.breakdown.feedback;
       scores[s.playerId] = score;
     }
     const drawingEndsAt = r.status === "SPINNING" || r.status === "REVEALED" ? null : r.endsAt;

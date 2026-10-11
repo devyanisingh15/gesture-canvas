@@ -9,7 +9,7 @@ Done so far:
 - **Phase 3, drawing engine.** Finger strokes are stored as vector data and rendered to a high-DPI `<canvas>` with smoothed curves, undo and clear.
 - **Phase 4, game engine.** Real games: create a room, friends join with its code, ready up, and the server runs every round (wheel, reveal, drawing timer, scoring, results) through a typed state machine. Games live in memory on the Next.js server for now.
 
-Supabase persistence and the real drawing evaluator come in later phases. Until then a placeholder scores drawings by how much of the canvas they use, not by what they show.
+Drawings are scored on the server by a swappable evaluator. The MVP one is deterministic and scores the drawing's geometry against the prompt; it doesn't recognise objects (see [Scoring a drawing](#scoring-a-drawing)).
 
 ## Run it
 
@@ -67,7 +67,7 @@ src/
                        the live game and the /game/* previews
   features/game/       Types, prompt list, prompt art, client/server protocol
   features/game/engine/  Pure game state machine, types and selectors
-  features/evaluation/ DrawingEvaluator interface and the placeholder scorer
+  features/evaluation/ DrawingEvaluator interface and the MVP geometry evaluator
   server/game/         GameService, GameRepository (in-memory) and API helpers
   app/api/games/       HTTP + Server-Sent Events API over the GameService
   features/gesture/    Landmark math (index finger detection), coordinate mapping, One Euro smoothing
@@ -121,7 +121,7 @@ Starting and leaving are database functions: `start_game` refuses anyone but the
 1. Drawing input stops (the countdown reaches 0).
 2. The browser hands in the drawing (`submit_drawing`), retrying if the connection drops. The database accepts it only until `ends_at` plus 3 s, by its own clock. While drawing, the drawing stays on the device (a copy in localStorage), so a refresh or reconnect before the deadline brings the canvas back. Nothing is sent to Supabase until the hand-in.
 3. The database moves to TIME_UP, then EVALUATING.
-4. Any player's browser asks `POST /api/rounds/:id/evaluate`. The app server checks with the database that the player is in the game, scores every drawing with the `DrawingEvaluator`, and stores the scores once with the secret key (`record_scores`).
+4. Any player's browser asks `POST /api/rounds/:id/evaluate`. The app server checks with the database that the player is in the game, scores every drawing with the evaluation service, and stores the scores once with the secret key (`record_scores`).
 5. The database moves to ROUND_RESULTS as soon as the evaluating screen has had its 4.5 s (or after 20 s with zeros, if no server scored the round).
 
 **Handing in a drawing** (`supabase/migrations/20261011030000_secure_drawing_submission.sql`). `submit_drawing(round, drawing)` is the only way a drawing reaches the `drawings` table; players can't insert, update or delete rows directly. The database never takes the player, game, score or game state from the browser:
@@ -132,7 +132,21 @@ Starting and leaving are database functions: `start_game` refuses anyone but the
 
 The browser shapes and checks the drawing with the same limits before sending (`src/features/drawing/validation.ts`; its test fails if the SQL limits drift). Scores are written only by the app server with the secret key.
 
-To test the database functions locally: `psql -d <throwaway db> -q -t -A -f supabase/tests/game_functions_test.sql` (and `lobby_test.sql`, `state_machine_test.sql`, `wheel_test.sql`, `timed_rounds_test.sql`, `drawing_submission_test.sql`; `race_test.sh` fires simultaneous transitions from parallel connections) after the stub and the migrations (see `supabase/tests/rls_test.sql` for the setup).
+### Scoring a drawing
+
+The evaluation service (`src/server/evaluation/evaluationService.ts`) is the only place drawings become scores. It runs on the app server, never in the browser:
+
+- **In:** the round's prompt and each player's stored drawing, both read from the database (`evaluation_batch`). The browser only names the round.
+- **Evaluate:** the drawing is validated again, then given to a `DrawingEvaluator` (`src/features/evaluation/types.ts`): `evaluate({ prompt, drawing })` → `{ score, breakdown: { structure, completeness, composition }, feedback? }`, each 0–100. Whatever an evaluator returns is clamped to whole numbers 0–100 (`normalizeResult`). No drawing, an invalid one, an evaluator error or a drawing that takes over 8 s scores 0, so one bad drawing can't hold up the round.
+- **Out:** `record_scores` stores each player's score and breakdown (with the feedback and the evaluator's id) in `scores`, once per round. The database keeps only those fields, clamps the numbers and cuts feedback to 280 characters.
+- **When:** only while the game is in EVALUATING, which starts after the round's end time plus the hand-in grace. Before that, `evaluation_batch` returns nothing and `record_scores` does nothing. A hand-in still being saved holds the round until it's stored, so the evaluator sees every accepted drawing.
+- **Who:** players can read scores once a round is complete. They can't insert, update or delete scores, or call `record_scores` or `evaluation_batch`; only the secret key can.
+
+The MVP evaluator (`src/features/evaluation/mvpEvaluator.ts`, id `mvp-geometry-v1`) measures the strokes (how many, ink, closed loops, straight lines, rays, size, position, proportions) and compares them with what a drawing of the prompt usually has, such as two wheels on a wide car or rays around a sun. Structure counts 50% of the total, completeness and composition 25% each. The same drawing always gets the same score. It doesn't recognise objects, so a different drawing with similar geometry can score well.
+
+To use another evaluator (computer vision, an AI model), implement `DrawingEvaluator`, add it to `src/server/evaluation/evaluators.ts` and set `DRAWING_EVALUATOR` to its id on the server. Read any API key it needs from a server environment variable, never a `NEXT_PUBLIC_` one. The game, the database and the screens stay as they are.
+
+To test the database functions locally: `psql -d <throwaway db> -q -t -A -f supabase/tests/game_functions_test.sql` (and `lobby_test.sql`, `state_machine_test.sql`, `wheel_test.sql`, `timed_rounds_test.sql`, `drawing_submission_test.sql`, `evaluation_test.sql`; `race_test.sh` fires simultaneous transitions from parallel connections) after the stub and the migrations (see `supabase/tests/rls_test.sql` for the setup).
 
 | File | Use from |
 | --- | --- |
