@@ -101,8 +101,8 @@ export interface Database {
         ];
       };
       scores: {
-        Row: { id: string; round_id: string; player_id: string; score: number; created_at: string };
-        Insert: { id?: string; round_id: string; player_id: string; score: number; created_at?: string };
+        Row: { id: string; round_id: string; player_id: string; score: number; breakdown: Json | null; created_at: string };
+        Insert: { id?: string; round_id: string; player_id: string; score: number; breakdown?: Json | null; created_at?: string };
         Update: Partial<Database["public"]["Tables"]["scores"]["Insert"]>;
         Relationships: [
           { foreignKeyName: "scores_round_id_fkey"; columns: ["round_id"]; isOneToOne: false; referencedRelation: "rounds"; referencedColumns: ["id"] },
@@ -112,10 +112,15 @@ export interface Database {
     };
     Views: { [_ in never]: never };
     Functions: {
-      create_game: {
-        Args: { p_display_name: string; p_total_rounds?: number };
-        Returns: { game_id: string; player_id: string; room_code: string }[];
-      };
+      create_game:
+        | {
+            Args: { p_display_name: string; p_total_rounds?: number };
+            Returns: { game_id: string; player_id: string; room_code: string }[];
+          }
+        | {
+            Args: { p_display_name: string; p_total_rounds: number; p_draw_seconds: number };
+            Returns: { game_id: string; player_id: string; room_code: string }[];
+          };
       join_game: {
         Args: { p_room_code: string; p_display_name: string };
         Returns: { game_id: string; player_id: string; room_code: string }[];
@@ -143,6 +148,24 @@ export interface Database {
       get_game_state: {
         Args: { p_game_id: string };
         Returns: Json;
+      };
+      submit_drawing: {
+        Args: { p_round_id: string; p_strokes: Json };
+        Returns: string;
+      };
+      request_evaluation: {
+        Args: { p_round_id: string };
+        Returns: boolean;
+      };
+      /** Server (secret key) only. */
+      evaluation_batch: {
+        Args: { p_round_id: string };
+        Returns: Json;
+      };
+      /** Server (secret key) only. */
+      record_scores: {
+        Args: { p_round_id: string; p_scores: Json };
+        Returns: boolean;
       };
       find_open_lobby: {
         Args: { p_room_code: string };

@@ -76,8 +76,8 @@ select pg_temp.expect_eq(pg_temp.state() || ' ' || (select status from public.ro
 reset role; select pg_temp.expire(); set local role authenticated;
 select pg_temp.adv() \g /dev/null
 select pg_temp.expect_eq(pg_temp.state(), 'DRAWING r1 v4', 'drawing');
-select pg_temp.expect_eq((select (ends_at = g.phase_ends_at and g.phase_ends_at - g.phase_started_at = interval '60 seconds')::text
-                            from public.rounds r join public.games g on g.id = r.game_id where r.round_number = 1), 'true', 'round end time = drawing deadline, 60 s');
+select pg_temp.expect_eq((select (ends_at = g.phase_ends_at and g.phase_ends_at - g.phase_started_at = (g.draw_seconds * interval '1 second'))::text
+                            from public.rounds r join public.games g on g.id = r.game_id where r.round_number = 1), 'true', 'round end time = drawing deadline, the game''s drawing time');
 select pg_temp.expect_code(format('select * from public.host_advance(%L, %s)', (select v from t where k = 'game'), pg_temp.ver()), 'GC006', 'guest cannot end the round early');
 select pg_temp.as_user('00000000-0000-0000-0000-000000000030') \g /dev/null
 select pg_temp.expect_eq((select a.advanced::text from public.host_advance((select v from t where k = 'game')::uuid, pg_temp.ver() - 1) a), 'false', 'stale version: host_advance does nothing');

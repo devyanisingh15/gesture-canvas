@@ -15,7 +15,10 @@ const raw = {
   ],
   rounds: [{ id: "r1", round_number: 1, prompt: "cat", status: "COMPLETED", started_at: "2026-10-10T11:58:00.000Z", ends_at: "2026-10-10T11:59:50.000Z" }],
   drawings: [{ round_id: "r1", player_id: "p2", strokes: { version: 1, strokes: [{ id: "s", points: [] }] }, submitted_at: "2026-10-10T11:59:51.000Z" }],
-  scores: [{ round_id: "r1", player_id: "p1", score: 40 }, { round_id: "r1", player_id: "p2", score: 70 }],
+  scores: [
+    { round_id: "r1", player_id: "p1", score: 40, breakdown: null },
+    { round_id: "r1", player_id: "p2", score: 70, breakdown: { shapeScore: 90, structureScore: 60, completenessScore: 70, compositionScore: 60 } },
+  ],
 };
 
 describe("parseSnapshot", () => {
@@ -48,5 +51,13 @@ describe("toEngineGame", () => {
   it("shows players without presence as offline", () => {
     const g = toEngineGame(parseSnapshot(raw)!, "p1", new Set(["p1"]), true);
     expect(g.players.find((p) => p.id === "p2")!.connection).toBe("disconnected");
+  });
+});
+
+describe("scores", () => {
+  it("shows the server's breakdown, or the total for every part when there is none", () => {
+    const g = toEngineGame(parseSnapshot(raw)!, "p2", null, true);
+    expect(g.rounds[0]!.scores.p2).toMatchObject({ totalScore: 70, shapeScore: 90, structureScore: 60 });
+    expect(g.rounds[0]!.scores.p1).toMatchObject({ totalScore: 40, shapeScore: 40, compositionScore: 40 });
   });
 });

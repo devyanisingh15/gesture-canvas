@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import { drawingReducer, initialDrawingState } from "@/features/drawing/drawingReducer";
-import type { Point } from "@/features/drawing/types";
+import { drawingReducer, initialDrawingState, type DrawingState } from "@/features/drawing/drawingReducer";
+import type { Drawing, Point } from "@/features/drawing/types";
 import type { HandTracking } from "./useHandTracking";
 
 interface Options {
   enabled: boolean;
+  /** A drawing to continue from (read once, when the hook mounts). */
+  initial?: Drawing | null;
   color?: string;
   width?: number;
 }
@@ -21,8 +23,8 @@ const newStrokeId = () =>
  * finger curled, open hand, or hand gone → end the stroke.
  * It knows nothing about the camera or the canvas.
  */
-export function useGestureDrawing(tracking: Pick<HandTracking, "subscribe">, { enabled, color, width }: Options) {
-  const [state, dispatch] = useReducer(drawingReducer, initialDrawingState);
+export function useGestureDrawing(tracking: Pick<HandTracking, "subscribe">, { enabled, initial, color, width }: Options) {
+  const [state, dispatch] = useReducer(drawingReducer, initial, (d): DrawingState => (d ? { drawing: d, activeStrokeId: null } : initialDrawingState));
   // Mirrors state.activeStrokeId synchronously, since frames arrive faster than renders.
   const activeRef = useRef<string | null>(null);
   const { subscribe } = tracking;

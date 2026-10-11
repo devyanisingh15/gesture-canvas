@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PROMPTS } from "../prompts";
 import { leaderboard } from "./selectors";
+import { SUBMIT_GRACE_MS } from "../state";
 import { addPlayer, applyEvent, createGame, currentRound, PHASE_DURATIONS, pickPrompt, TRANSITIONS } from "./stateMachine";
 import { GameError, type EngineContext, type Game, type GameEvent, type Score } from "./types";
 
@@ -34,7 +35,7 @@ describe("game creation and joining", () => {
     const g = createGame({ name: " Host ", avatar: "violet" }, {}, { gameId: "g", hostId: "h", code: "X" }, ctx(5));
     expect(g.phase).toBe("LOBBY");
     expect(g.players).toEqual([expect.objectContaining({ id: "h", name: "Host", isHost: true, isReady: true })]);
-    expect(g.settings).toEqual({ rounds: 3, drawSeconds: 60, maxPlayers: 6 });
+    expect(g.settings).toEqual({ rounds: 5, drawSeconds: 45, maxPlayers: 6 });
   });
 
   it("rejects duplicate names, full games and joining after start", () => {
@@ -64,6 +65,22 @@ describe("starting", () => {
     const started = at(ready, 30, { type: "START_GAME", playerId: "h" });
     expect(started.phase).toBe("STARTING");
     expect(started.phaseEndsAt).toBe(30 + PHASE_DURATIONS.STARTING);
+  });
+});
+
+describe("handing in drawings", () => {
+  it("goes by the round's end time: a short grace after it, then refused", () => {
+    let g = at(newGame(2), 20, { type: "SET_READY", playerId: "m", ready: true });
+    g = at(g, 100, { type: "START_GAME", playerId: "h" });
+    for (const phase of ["WHEEL_SPINNING", "TARGET_REVEALED", "DRAWING"]) {
+      g = at(g, g.phaseEndsAt!, { type: "TICK" });
+      expect(g.phase).toBe(phase);
+    }
+    const end = currentRound(g)!.drawingEndsAt!;
+    // The server hasn't ticked yet, but the deadline has passed: still inside the grace.
+    const late = at(g, end + SUBMIT_GRACE_MS, { type: "SUBMIT_DRAWING", playerId: "h", drawing });
+    expect(currentRound(late)!.drawings.h).toBeDefined();
+    expectError(() => at(g, end + SUBMIT_GRACE_MS + 1, { type: "SUBMIT_DRAWING", playerId: "h", drawing }), "WRONG_PHASE");
   });
 });
 

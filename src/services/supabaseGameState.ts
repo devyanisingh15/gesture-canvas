@@ -3,8 +3,8 @@
 import type { Drawing } from "@/features/drawing/types";
 import type { Game, Player, Round, Score } from "@/features/game/engine/types";
 import { PROMPTS } from "@/features/game/prompts";
-import { isGamePhase, type GamePhase } from "@/features/game/state";
-import type { AvatarColor, PromptId } from "@/features/game/types";
+import { isGamePhase, MAX_PLAYERS, type GamePhase } from "@/features/game/state";
+import type { AvatarColor, PromptId, ScoreBreakdown } from "@/features/game/types";
 import type { Json } from "@/lib/supabase/database.types";
 import { client, GameRequestError, guard, REQUEST_TIMEOUT_MS, toRequestError } from "./supabaseGames";
 
@@ -33,12 +33,10 @@ export interface GameSnapshot {
   rounds: { id: string; number: number; prompt: PromptId; status: string; startedAt: number; endsAt: number | null }[];
   /** Only the drawings this player may see: their own, and everyone's once a round is complete. */
   drawings: { roundId: string; playerId: string; drawing: Drawing; submittedAt: number }[];
-  /** Visible once a round is complete. */
-  scores: { roundId: string; playerId: string; score: number }[];
+  /** Visible once a round is complete. The breakdown is missing for rounds nobody scored (0). */
+  scores: { roundId: string; playerId: string; score: number; breakdown: Partial<ScoreBreakdown> | null }[];
 }
 
-// The schema has no seat-limit column; this matches the app's limit.
-const MAX_PLAYERS = 6;
 const AVATARS: AvatarColor[] = ["violet", "pink", "sun", "mint", "sky", "peach"];
 const PROMPT_IDS = new Set<string>(PROMPTS.map((p) => p.id));
 
@@ -92,8 +90,24 @@ export function parseSnapshot(raw: Json): GameSnapshot | null {
         submittedAt: ms(d.submitted_at),
       };
     }),
-    scores: rows(s.scores).map((x) => ({ roundId: String(x.round_id), playerId: String(x.player_id), score: Number(x.score) })),
+    scores: rows(s.scores).map((x) => ({
+      roundId: String(x.round_id),
+      playerId: String(x.player_id),
+      score: Number(x.score),
+      breakdown: parseBreakdown(x.breakdown),
+    })),
   };
+}
+
+const BREAKDOWN_KEYS = ["shapeScore", "structureScore", "completenessScore", "compositionScore"] as const;
+function parseBreakdown(v: unknown): Partial<ScoreBreakdown> | null {
+  if (!v || typeof v !== "object") return null;
+  const out: Partial<ScoreBreakdown> = {};
+  for (const k of BREAKDOWN_KEYS) {
+    const n = Number((v as Row)[k]);
+    if (Number.isFinite(n)) out[k] = n;
+  }
+  return out;
 }
 
 /** A stable colour per player, so colours don't shuffle when someone leaves. */
@@ -130,8 +144,17 @@ export function toEngineGame(snap: GameSnapshot, meId: string, online: ReadonlyS
     const scores: Round["scores"] = {};
     for (const s of snap.scores) {
       if (s.roundId !== r.id) continue;
-      // The database keeps one total per player per round; the breakdown isn't stored yet.
-      const score: Score = { playerId: s.playerId, roundNumber: r.number, totalScore: s.score, shapeScore: s.score, structureScore: s.score, completenessScore: s.score, compositionScore: s.score };
+      // Rounds nobody scored have no breakdown: every part is the total (0).
+      const part = (k: (typeof BREAKDOWN_KEYS)[number]) => s.breakdown?.[k] ?? s.score;
+      const score: Score = {
+        playerId: s.playerId,
+        roundNumber: r.number,
+        totalScore: s.score,
+        shapeScore: part("shapeScore"),
+        structureScore: part("structureScore"),
+        completenessScore: part("completenessScore"),
+        compositionScore: part("compositionScore"),
+      };
       scores[s.playerId] = score;
     }
     const drawingEndsAt = r.status === "SPINNING" || r.status === "REVEALED" ? null : r.endsAt;
@@ -197,16 +220,37 @@ export const advanceGame = (gameId: string, version: number) => advance("advance
 /** Host: end drawing now, or go on from the results. The database refuses anyone else. */
 export const hostAdvance = (gameId: string, version: number) => advance("host_advance", gameId, version);
 
-/** Hands in this player's drawing for a round. RLS only accepts it while the round is open. */
-export async function submitDrawing(roundId: string, playerId: string, drawing: Drawing): Promise<void> {
+/**
+ * Hands in (or saves again) this player's drawing for a round. The database
+ * accepts it only until the round's end time plus a short grace, by its own
+ * clock; after that it fails with kind "closed". Resolves to when it was stored.
+ */
+export async function submitDrawing(roundId: string, drawing: Drawing): Promise<number> {
   const fallback = "Couldn't hand in your drawing.";
-  const { error } = await guard(
+  const { data, error } = await guard(
     async () =>
       client()
-        .from("drawings")
-        .insert({ round_id: roundId, player_id: playerId, strokes: { version: 1, strokes: drawing.strokes } as unknown as Json })
+        .rpc("submit_drawing", { p_round_id: roundId, p_strokes: { version: 1, strokes: drawing.strokes } as unknown as Json })
         .abortSignal(AbortSignal.timeout(REQUEST_TIMEOUT_MS)),
     fallback,
   );
   if (error) throw toRequestError(error, fallback);
+  return ms(data);
+}
+
+/**
+ * Asks the app server to score a round that is being evaluated. Scoring runs
+ * there (players can't write scores); any player may ask, and a round is only
+ * scored once. Resolves false when the server has no scorer set up, in which
+ * case the round ends with zeros after the evaluating wait.
+ */
+export async function requestEvaluation(roundId: string): Promise<boolean> {
+  const res = await fetch(`/api/rounds/${encodeURIComponent(roundId)}/evaluate`, {
+    method: "POST",
+    credentials: "same-origin",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS * 2),
+  });
+  if (res.status === 503) return false;
+  if (!res.ok) throw new GameRequestError("unknown", "Couldn't score the round.");
+  return true;
 }

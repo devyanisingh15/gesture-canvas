@@ -5,6 +5,7 @@ import { findPlayer } from "@/features/game/engine/stateMachine";
 import type { Game, GameState, Player } from "@/features/game/engine/types";
 import type { ClientCommand, PlayerSession } from "@/features/game/protocol";
 import { GameClientError, getGameClient, loadSession, type LiveStatus } from "@/services/gameClient";
+import { useServerCountdown } from "./useCountdown";
 
 export interface UseGame {
   /** null when this tab has no session for the room (not joined yet). undefined while loading. */
@@ -67,14 +68,5 @@ export function useGame(code: string): UseGame {
 
 /** Whole seconds left in the current phase, ticking with the server clock. */
 export function usePhaseSeconds(game: Game | null, serverNow: () => number): number {
-  const endsAt = game?.phaseEndsAt ?? null;
-  const compute = useCallback(() => (endsAt === null ? 0 : Math.max(0, Math.ceil((endsAt - serverNow()) / 1000))), [endsAt, serverNow]);
-  const [seconds, setSeconds] = useState(compute);
-  useEffect(() => {
-    setSeconds(compute());
-    if (endsAt === null) return;
-    const id = window.setInterval(() => setSeconds(compute()), 200);
-    return () => window.clearInterval(id);
-  }, [compute, endsAt]);
-  return seconds;
+  return useServerCountdown(game?.phaseEndsAt ?? null, serverNow);
 }

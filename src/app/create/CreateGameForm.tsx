@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { AvatarColor } from "@/features/game/types";
+import { DEFAULT_DRAW_SECONDS, DEFAULT_ROUNDS } from "@/features/game/state";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getGameClient, saveSession } from "@/services/gameClient";
 import { createGame, GameRequestError, saveGameSession } from "@/services/supabaseGames";
@@ -21,8 +22,8 @@ export function CreateGameForm() {
   const router = useRouter();
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState<AvatarColor>("violet");
-  const [rounds, setRounds] = useState(5);
-  const [seconds, setSeconds] = useState(60);
+  const [rounds, setRounds] = useState<number>(DEFAULT_ROUNDS);
+  const [seconds, setSeconds] = useState<number>(DEFAULT_DRAW_SECONDS);
   const [maxPlayers, setMaxPlayers] = useState(6);
   const [error, setError] = useState<FormError>();
   const [submitting, setSubmitting] = useState(false);
@@ -40,7 +41,7 @@ export function CreateGameForm() {
     setError(undefined);
     try {
       if (isSupabaseConfigured()) {
-        const session = await createGame({ displayName: name, totalRounds: rounds });
+        const session = await createGame({ displayName: name, totalRounds: rounds, drawSeconds: seconds });
         saveGameSession(session);
         router.push(`/lobby/${session.roomCode}`);
       } else {
@@ -90,7 +91,7 @@ export function CreateGameForm() {
         />
         <AvatarPicker name={name} value={avatar} onChange={setAvatar} />
         <Segmented label="Rounds" options={[{ value: 3, label: "3" }, { value: 5, label: "5" }, { value: 7, label: "7" }]} value={rounds} onChange={setRounds} />
-        <Segmented label="Drawing time" options={[{ value: 30, label: "30s" }, { value: 60, label: "60s" }, { value: 90, label: "90s" }]} value={seconds} onChange={setSeconds} />
+        <Segmented label="Drawing time" options={[{ value: 30, label: "30s" }, { value: 45, label: "45s" }, { value: 60, label: "60s" }]} value={seconds} onChange={setSeconds} />
         <Segmented
           label="Max players"
           options={[2, 3, 4, 5, 6].map((n) => ({ value: n, label: String(n) }))}

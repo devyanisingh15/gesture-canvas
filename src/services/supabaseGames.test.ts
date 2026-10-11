@@ -23,8 +23,8 @@ beforeEach(() => {
 describe("createGame", () => {
   it("calls create_game and returns the new session", async () => {
     rpcReturns({ data: [ROW], error: null });
-    await expect(createGame({ displayName: "  Maya ", totalRounds: 5 })).resolves.toEqual({ gameId: "g1", playerId: "p1", roomCode: "ABC234" });
-    expect(rpc).toHaveBeenCalledWith("create_game", { p_display_name: "Maya", p_total_rounds: 5 });
+    await expect(createGame({ displayName: "  Maya ", totalRounds: 5, drawSeconds: 45 })).resolves.toEqual({ gameId: "g1", playerId: "p1", roomCode: "ABC234" });
+    expect(rpc).toHaveBeenCalledWith("create_game", { p_display_name: "Maya", p_total_rounds: 5, p_draw_seconds: 45 });
     expect(auth.signInAnonymously).not.toHaveBeenCalled();
   });
 
@@ -32,14 +32,14 @@ describe("createGame", () => {
     auth.getSession.mockResolvedValue({ data: { session: null } });
     auth.signInAnonymously.mockResolvedValue({ error: null });
     rpcReturns({ data: [ROW], error: null });
-    await createGame({ displayName: "Maya", totalRounds: 5 });
+    await createGame({ displayName: "Maya", totalRounds: 5, drawSeconds: 45 });
     expect(auth.signInAnonymously).toHaveBeenCalledOnce();
   });
 
   it("explains how to enable anonymous sign-ins when they are off", async () => {
     auth.getSession.mockResolvedValue({ data: { session: null } });
     auth.signInAnonymously.mockResolvedValue({ error: { message: "Anonymous sign-ins are disabled" } });
-    const err = await createGame({ displayName: "Maya", totalRounds: 5 }).catch((e: unknown) => e);
+    const err = await createGame({ displayName: "Maya", totalRounds: 5, drawSeconds: 45 }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(GameRequestError);
     expect(err).toMatchObject({ kind: "setup", retryable: false });
     expect(rpc).not.toHaveBeenCalled();
@@ -53,12 +53,12 @@ describe("createGame", () => {
     [{ code: "XX000", message: "boom" }, "unknown", true],
   ])("maps %o to a %s error", async (error, kind, retryable) => {
     rpcReturns({ data: null, error });
-    await expect(createGame({ displayName: "Maya", totalRounds: 5 })).rejects.toMatchObject({ kind, retryable });
+    await expect(createGame({ displayName: "Maya", totalRounds: 5, drawSeconds: 45 })).rejects.toMatchObject({ kind, retryable });
   });
 
   it("treats a timeout as a retryable network error", async () => {
     rpc.mockReturnValue({ abortSignal: () => Promise.reject(Object.assign(new Error("The operation was aborted"), { name: "AbortError" })) });
-    await expect(createGame({ displayName: "Maya", totalRounds: 5 })).rejects.toMatchObject({ kind: "network", retryable: true });
+    await expect(createGame({ displayName: "Maya", totalRounds: 5, drawSeconds: 45 })).rejects.toMatchObject({ kind: "network", retryable: true });
   });
 });
 

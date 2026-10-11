@@ -65,6 +65,19 @@ export const PHASE_DURATIONS = {
   FINAL_RESULTS: 60_000,
 } as const;
 
+/** MVP game settings: 5 rounds of 45 seconds' drawing, 2 to 6 players. */
+export const DEFAULT_ROUNDS = 5;
+export const DEFAULT_DRAW_SECONDS = 45;
+export const MIN_PLAYERS = 2;
+export const MAX_PLAYERS = 6;
+
+/**
+ * A drawing finished by the deadline still needs a moment to reach the server.
+ * It is accepted up to this long after the round's end time (by the server
+ * clock), which is also how long TIME_UP lasts. Mirrored by private.submit_grace_ms().
+ */
+export const SUBMIT_GRACE_MS = 3_000;
+
 /** Phases the host may cut short: end drawing early, or skip the results wait. */
 export const HOST_SKIPPABLE: readonly GamePhase[] = ["DRAWING", "ROUND_RESULTS"];
 

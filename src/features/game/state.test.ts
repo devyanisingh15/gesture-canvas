@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { PROMPTS } from "./prompts";
 import {
   assertTransition,
+  DEFAULT_DRAW_SECONDS,
+  SUBMIT_GRACE_MS,
   canTransition,
   GAME_PHASES,
   InvalidTransitionError,
@@ -86,5 +88,15 @@ describe("the database mirrors this model", () => {
   it("picks round prompts from the same list", () => {
     const list = /unnest\(array\[([^\]]*)\]\)/.exec(migration)![1]!;
     expect([...list.matchAll(/'([a-z]+)'/g)].map((m) => m[1])).toEqual(PROMPTS.map((p) => p.id));
+  });
+});
+
+describe("timed rounds match the database", () => {
+  const sql = readFileSync(new URL("../../../supabase/migrations/20261011010000_timed_rounds.sql", import.meta.url), "utf8");
+  it("accepts drawings for the same grace after the deadline", () => {
+    expect(Number(/function private\.submit_grace_ms\(\)[\s\S]*?select (\d+)/.exec(sql)![1])).toBe(SUBMIT_GRACE_MS);
+  });
+  it("has the same default drawing time", () => {
+    expect(Number(/alter column draw_seconds set default (\d+)/.exec(sql)![1])).toBe(DEFAULT_DRAW_SECONDS);
   });
 });

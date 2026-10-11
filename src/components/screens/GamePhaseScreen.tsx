@@ -35,13 +35,15 @@ interface GamePhaseScreenProps {
   /** This player's drawing: reported while drawing, shown afterwards. */
   onDrawingChange: (drawing: Drawing) => void;
   shownDrawing: Drawing;
+  /** This player's saved drawing for the round, to continue after a refresh. */
+  resumeDrawing?: Drawing | null;
 }
 
 /**
  * The one place that decides which screen each game phase shows. Both the
  * in-memory room and the Supabase room render through it, from server state.
  */
-export function GamePhaseScreen({ game, me, seconds, serverNow, lobby, onEndRound, onNextRound, onDrawingChange, shownDrawing }: GamePhaseScreenProps) {
+export function GamePhaseScreen({ game, me, seconds, serverNow, lobby, onEndRound, onNextRound, onDrawingChange, shownDrawing, resumeDrawing }: GamePhaseScreenProps) {
   const round = currentRound(game);
   const roundNumber = round?.number ?? 0;
   const players = playerViews(game, me.id);
@@ -87,7 +89,9 @@ export function GamePhaseScreen({ game, me, seconds, serverNow, lobby, onEndRoun
             total={game.settings.drawSeconds}
             remaining={seconds}
             players={players}
-            submittedIds={Object.keys(round!.drawings)}
+            // Your own saved work in progress isn't "done" yet.
+            submittedIds={Object.keys(round!.drawings).filter((id) => id !== me.id)}
+            initialDrawing={resumeDrawing}
             onDrawingChange={onDrawingChange}
             onEndRound={isHost ? onEndRound : undefined}
           />

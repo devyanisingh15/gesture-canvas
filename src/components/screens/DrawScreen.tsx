@@ -30,6 +30,8 @@ interface DrawScreenProps {
   players: PlayerView[];
   /** Ids of players who have handed in their drawing. */
   submittedIds?: readonly string[];
+  /** A saved drawing to continue (after a refresh mid-round). */
+  initialDrawing?: Drawing | null;
   /** Called with the drawing whenever it changes, so the game can submit it. */
   onDrawingChange?: (drawing: Drawing) => void;
   /** Local clock ran out (preview only). */
@@ -47,6 +49,7 @@ export function DrawScreen({
   remaining: serverRemaining,
   players,
   submittedIds = [],
+  initialDrawing,
   onDrawingChange,
   onTimeUp,
   onEndRound,
@@ -61,7 +64,8 @@ export function DrawScreen({
     onEnd: onTimeUp,
   });
   const remaining = serverRemaining ?? localRemaining;
-  const drawing = useGestureDrawing(tracking, { enabled: tracking.status === "running" && remaining > 0 });
+  // Input stops the moment the countdown reaches zero.
+  const drawing = useGestureDrawing(tracking, { enabled: tracking.status === "running" && remaining > 0, initial: initialDrawing });
 
   const { drawing: current } = drawing;
   useEffect(() => {

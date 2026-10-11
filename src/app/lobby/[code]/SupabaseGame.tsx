@@ -15,12 +15,15 @@ import { useRoundDrawing } from "@/hooks/useRoundDrawing";
 import { useSupabaseGame } from "@/hooks/useSupabaseGame";
 import { clearGameSession } from "@/services/supabaseGames";
 
+const CHECKPOINT_MS = 5_000;
+
 /** A game stored in Supabase, from the lobby to the final results, rendered from the database's state. */
 export function SupabaseGame({ code }: { code: string }) {
   const router = useRouter();
-  const { session, game, me, link, error, actionError, busy, serverNow, reload, start, skipAhead, leave, submit } = useSupabaseGame(code);
+  const { session, game, me, link, error, actionError, busy, serverNow, reload, start, skipAhead, leave, saveDrawing } = useSupabaseGame(code);
   const seconds = usePhaseSeconds(game, serverNow);
-  const drawing = useRoundDrawing(game, me?.id, submit);
+  // Work in progress is saved every few seconds, so a refresh or a dropped connection keeps it.
+  const drawing = useRoundDrawing(game, me?.id, { save: saveDrawing, serverNow, checkpointMs: CHECKPOINT_MS });
   const round = game ? currentRound(game) : undefined;
 
   const header = (
@@ -108,6 +111,7 @@ export function SupabaseGame({ code }: { code: string }) {
           onNextRound={() => void skipAhead()}
           onDrawingChange={drawing.onDrawingChange}
           shownDrawing={drawing.shown}
+          resumeDrawing={drawing.resumeFrom}
         />
         {reconnecting && isInProgress(game.phase) && (
           <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center">

@@ -6,7 +6,19 @@
  * backed by Postgres later.
  */
 import { PROMPTS } from "../prompts";
-import { assertTransition, canTransition, isFinalRound, isInProgress, PHASE_DURATIONS, TRANSITIONS } from "../state";
+import {
+  assertTransition,
+  canTransition,
+  DEFAULT_DRAW_SECONDS,
+  DEFAULT_ROUNDS,
+  isFinalRound,
+  isInProgress,
+  MAX_PLAYERS,
+  MIN_PLAYERS,
+  PHASE_DURATIONS,
+  SUBMIT_GRACE_MS,
+  TRANSITIONS,
+} from "../state";
 import type { PromptId } from "../types";
 import {
   GameError,
@@ -21,13 +33,11 @@ import {
   type Score,
 } from "./types";
 
-export const MIN_PLAYERS = 2;
-export const MAX_PLAYERS = 6;
 export const NAME_MAX_LENGTH = 16;
 
-export const DEFAULT_SETTINGS: GameSettings = { rounds: 3, drawSeconds: 60, maxPlayers: MAX_PLAYERS };
+export const DEFAULT_SETTINGS: GameSettings = { rounds: DEFAULT_ROUNDS, drawSeconds: DEFAULT_DRAW_SECONDS, maxPlayers: MAX_PLAYERS };
 
-export { canTransition, PHASE_DURATIONS, TRANSITIONS };
+export { canTransition, MAX_PLAYERS, MIN_PLAYERS, PHASE_DURATIONS, TRANSITIONS };
 
 // ---------------------------------------------------------------------------
 // Creation and joining
@@ -95,6 +105,10 @@ export function applyEvent(game: Game, event: GameEvent, ctx: EngineContext): Ga
         throw new GameError("WRONG_PHASE", "Drawings can only be submitted while drawing.");
       }
       const round = currentRound(game)!;
+      // The round's end time decides, not the phase: a drawing may arrive just after the deadline, never long after.
+      if (round.drawingEndsAt !== null && ctx.now > round.drawingEndsAt + SUBMIT_GRACE_MS) {
+        throw new GameError("WRONG_PHASE", "Time's up: this round isn't taking drawings any more.");
+      }
       const updated: Round = {
         ...round,
         drawings: { ...round.drawings, [event.playerId]: { playerId: event.playerId, drawing: event.drawing, submittedAt: ctx.now } },

@@ -26,6 +26,7 @@ export type GameRequestErrorKind =
   | "not-host"
   | "not-enough-players"
   | "wrong-phase"
+  | "closed"
   | "unknown";
 
 export class GameRequestError extends Error {
@@ -81,6 +82,8 @@ export function toRequestError(error: PostgrestError | Error | null | undefined,
   if (code === "GC007") return new GameRequestError("not-enough-players", "You need at least 2 players in the lobby to start.");
   // Raised by the state machine (see supabase/migrations/20261010040000_game_state_machine.sql).
   if (code === "GC008" || code === "GC009") return new GameRequestError("wrong-phase", "The game has already moved on.");
+  // Raised by submit_drawing (see supabase/migrations/20261011010000_timed_rounds.sql).
+  if (code === "GC010") return new GameRequestError("closed", /started/.test(message) ? "Drawing hasn't started yet." : "Time's up: this round isn't taking drawings any more.");
   if (code === "28000" || code === "42501") return new GameRequestError("auth", "You need to be signed in to do that.");
   if (code === "PGRST202" || code === "42883" || code === "PGRST205" || code === "42P01") {
     return new GameRequestError("setup", "The game database isn't set up yet. Apply the Supabase migrations and try again.");
@@ -114,12 +117,12 @@ async function ensureSignedIn(): Promise<void> {
  * Creates a game in LOBBY with this browser as host. The database function
  * picks a unique room code and treats a double-submit as the same request.
  */
-export async function createGame(input: { displayName: string; totalRounds: number }): Promise<GameSession> {
+export async function createGame(input: { displayName: string; totalRounds: number; drawSeconds: number }): Promise<GameSession> {
   const fallback = "Couldn't create the game. Try again.";
   const { data, error } = await guard(async () => {
     await ensureSignedIn();
     return client()
-      .rpc("create_game", { p_display_name: input.displayName.trim(), p_total_rounds: input.totalRounds })
+      .rpc("create_game", { p_display_name: input.displayName.trim(), p_total_rounds: input.totalRounds, p_draw_seconds: input.drawSeconds })
       .abortSignal(AbortSignal.timeout(REQUEST_TIMEOUT_MS));
   }, fallback);
   if (error) throw toRequestError(error, fallback);

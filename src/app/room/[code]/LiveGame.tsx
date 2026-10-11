@@ -36,8 +36,16 @@ export function LiveGame({ code }: { code: string }) {
   );
   useEffect(() => setCommandError(null), [game?.phase]);
 
-  const submit = useCallback((drawing: Drawing) => void send({ type: "SUBMIT_DRAWING", drawing }), [send]);
-  const drawing = useRoundDrawing(game, me?.id, submit);
+  const save = useCallback(
+    async (_round: number, drawing: Drawing) => {
+      const err = await send({ type: "SUBMIT_DRAWING", drawing });
+      if (err === null) return "saved" as const;
+      if (/time's up|only be submitted/i.test(err)) return "closed" as const;
+      throw new Error(err);
+    },
+    [send],
+  );
+  const drawing = useRoundDrawing(game, me?.id, { save, serverNow });
 
   if (error || (game && !me)) {
     return (
@@ -98,6 +106,7 @@ export function LiveGame({ code }: { code: string }) {
           onNextRound={() => void run({ type: "NEXT_ROUND" })}
           onDrawingChange={drawing.onDrawingChange}
           shownDrawing={drawing.shown}
+          resumeDrawing={drawing.resumeFrom}
         />
       </div>
       {live === "reconnecting" && (

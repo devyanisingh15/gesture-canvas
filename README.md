@@ -94,12 +94,13 @@ type Drawing = { strokes: Stroke[] };
 
 ## Supabase
 
-When the two variables below are set, **Create Game** and **Join Game** store games and players in Supabase and open the lobby at `/lobby/<code>`. Without them, games run in memory as before (`/room/<code>`). The lobby is live, and the whole game (wheel, reveal, drawing, results, final results) runs from state stored in Postgres. Scoring through Supabase comes next; until then every round scores 0.
+When the two variables below are set, **Create Game** and **Join Game** store games and players in Supabase and open the lobby at `/lobby/<code>`. Without them, games run in memory as before (`/room/<code>`). The lobby is live, and the whole game (wheel, reveal, drawing, scoring, results, final results) runs from state stored in Postgres.
 
 1. Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (Supabase dashboard → Project Settings → API). Only the publishable key is used; never put a secret or `service_role` key in a `NEXT_PUBLIC_` variable.
 2. Restart `npm run dev` and open `/api/health/supabase`. `{"ok":true,"project":"…"}` means the URL and key work.
 3. Apply the migrations in `supabase/migrations/` in order (`supabase db push`, or paste each into the SQL Editor).
 4. Turn on **Authentication → Sign In / Providers → Allow anonymous sign-ins**. Each browser signs in as a guest, and that identity is the player.
+5. For scoring, set `SUPABASE_SECRET_KEY` on the server (Project Settings → API keys → secret key; never a `NEXT_PUBLIC_` variable). The app server uses it only to store round scores, which players can't write. Without it, games still run and every round scores 0.
 
 How Create Game works: the form calls the `create_game` database function (`src/services/supabaseGames.ts`). It runs as the signed-in guest, picks an unused 6-character room code, and inserts the game (`LOBBY`, round 0 of the chosen rounds) and the host's player row in one transaction. Submitting twice within 30 seconds returns the same game. The tab keeps `{ gameId, playerId, roomCode }` in `sessionStorage`.
 
@@ -116,7 +117,14 @@ Starting and leaving are database functions: `start_game` refuses anyone but the
 
 **The prompt wheel.** The database picks each round's prompt (`private.start_round`): one of the ten MVP prompts not used yet this game, stored in `rounds.prompt` in the same transaction that enters `WHEEL_SPINNING`. Browsers never pick one. The wheel only animates to the stored prompt (`src/features/game/wheel.ts`), timed from the server's phase start: everyone lands at spin start + 4.2 s, a player who reloads mid-spin spins for the time left, and one who arrives after the spin sees it already landed. If writing the round fails, nothing changes and the browsers' timers keep retrying (backing off up to 5 s) until it goes through.
 
-To test the database functions locally: `psql -d <throwaway db> -q -t -A -f supabase/tests/game_functions_test.sql` (and `lobby_test.sql`, `state_machine_test.sql`, `wheel_test.sql`; `race_test.sh` fires simultaneous transitions from parallel connections) after the stub and the migrations (see `supabase/tests/rls_test.sql` for the setup).
+**Timed rounds.** A game defaults to 5 rounds of 45 seconds' drawing, for 2 to 6 players (`DEFAULT_ROUNDS`, `DEFAULT_DRAW_SECONDS` in `state.ts`). The database sets each round's start and end time; browsers never time a round themselves. `useServerCountdown` (`src/hooks/useCountdown.ts`) shows 45, 44, … 1, then "Time's up", from the database's `ends_at` on the database's clock (`ServerClock` in `src/features/game/clock.ts` estimates it from every read), so every player's countdown turns over together even when their computer's clock is wrong. At zero:
+1. Drawing input stops (the countdown reaches 0).
+2. The browser hands in the drawing (`submit_drawing`), retrying if the connection drops. The database accepts it only until `ends_at` plus 3 s, by its own clock. Work in progress is also saved every 5 s, so a refresh brings the canvas back and a long disconnect keeps the last saved copy.
+3. The database moves to TIME_UP, then EVALUATING.
+4. Any player's browser asks `POST /api/rounds/:id/evaluate`. The app server checks with the database that the player is in the game, scores every drawing with the `DrawingEvaluator`, and stores the scores once with the secret key (`record_scores`).
+5. The database moves to ROUND_RESULTS as soon as the evaluating screen has had its 4.5 s (or after 20 s with zeros, if no server scored the round).
+
+To test the database functions locally: `psql -d <throwaway db> -q -t -A -f supabase/tests/game_functions_test.sql` (and `lobby_test.sql`, `state_machine_test.sql`, `wheel_test.sql`, `timed_rounds_test.sql`; `race_test.sh` fires simultaneous transitions from parallel connections) after the stub and the migrations (see `supabase/tests/rls_test.sql` for the setup).
 
 | File | Use from |
 | --- | --- |

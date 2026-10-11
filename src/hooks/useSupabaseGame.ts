@@ -3,14 +3,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Drawing } from "@/features/drawing/types";
 import type { Game, Player } from "@/features/game/engine/types";
+import { ServerClock } from "@/features/game/clock";
 import { openLobbyLink, type LobbyLink, type LobbyLinkStatus } from "@/services/lobbyRealtime";
-import { advanceGame, fetchGameState, hostAdvance, submitDrawing, toEngineGame, type GameSnapshot } from "@/services/supabaseGameState";
+import { advanceGame, fetchGameState, hostAdvance, requestEvaluation, submitDrawing, toEngineGame, type GameSnapshot } from "@/services/supabaseGameState";
 import { GameRequestError, leaveGame, loadGameSession, startGame, type GameSession } from "@/services/supabaseGames";
 
 /** Safety net in case a realtime signal is missed; realtime and the phase timer do the real work. */
 const FALLBACK_REFRESH_MS = 30_000;
 /** Spread clients' "time's up" calls a little; the database lets exactly one through anyway. */
 const ADVANCE_JITTER_MS = 250;
+/** Spread players' "please score this round" requests; only the first does any work. */
+const EVALUATE_JITTER_MS = 600;
 /** Longest wait between retries when the database can't be reached. */
 const ADVANCE_RETRY_MAX_MS = 5_000;
 
@@ -33,7 +36,8 @@ export interface UseSupabaseGame {
   skipAhead: () => Promise<void>;
   /** Resolves true once the seat is freed. */
   leave: () => Promise<boolean>;
-  submit: (drawing: Drawing) => void;
+  /** Saves this player's drawing for a round; "closed" once the database's deadline has passed. */
+  saveDrawing: (roundNumber: number, drawing: Drawing, final: boolean) => Promise<"saved" | "closed">;
 }
 
 /**
@@ -49,11 +53,12 @@ export function useSupabaseGame(code: string): UseSupabaseGame {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const linkRef = useRef<LobbyLink | null>(null);
-  const offset = useRef(0);
+  // The database's clock, estimated from every read: countdowns never trust the local clock.
+  const [clock] = useState(() => new ServerClock());
+  const serverNow = clock.now;
   const version = useRef(-1);
 
   useEffect(() => setSession(loadGameSession(code)), [code]);
-  const serverNow = useCallback(() => Date.now() + offset.current, []);
 
   // Re-reads the game. Calls that arrive while a read is running fold into one more read.
   const reading = useRef(false);
@@ -69,12 +74,13 @@ export function useSupabaseGame(code: string): UseSupabaseGame {
       do {
         again.current = false;
         try {
+          const sentAt = Date.now();
           const next = await fetchGameState(session.gameId);
           if (!next) {
             setError(new GameRequestError("not-found", "You left this game, or it has ended."));
             continue;
           }
-          offset.current = next.serverTime - Date.now();
+          clock.add({ sentAt, receivedAt: Date.now(), serverTime: next.serverTime });
           // Never step back to an older state than one already shown.
           if (next.game.version < version.current) continue;
           version.current = next.game.version;
@@ -89,7 +95,7 @@ export function useSupabaseGame(code: string): UseSupabaseGame {
     } finally {
       reading.current = false;
     }
-  }, [session]);
+  }, [session, clock]);
 
   // Realtime: presence, change signals and the heartbeat. One link per mounted game.
   useEffect(() => {
@@ -200,16 +206,53 @@ export function useSupabaseGame(code: string): UseSupabaseGame {
     [act, session],
   );
 
-  const roundId = snap?.rounds.find((r) => r.number === snap.game.currentRound)?.id;
-  const submit = useCallback(
-    (drawing: Drawing) => {
-      if (!session || !roundId) return;
-      submitDrawing(roundId, session.playerId, drawing)
-        .then(() => load())
-        .catch(() => setActionError("Couldn't hand in your drawing."));
+  const roundIds = useMemo(() => new Map(snap?.rounds.map((r) => [r.number, r.id])), [snap?.rounds]);
+  const roundIdsRef = useRef(roundIds);
+  roundIdsRef.current = roundIds;
+  const saveDrawing = useCallback(
+    async (roundNumber: number, drawing: Drawing, final: boolean) => {
+      const roundId = roundIdsRef.current.get(roundNumber);
+      if (!session || !roundId) throw new GameRequestError("unknown", "This round isn't loaded yet.");
+      try {
+        await submitDrawing(roundId, drawing);
+      } catch (err) {
+        if (err instanceof GameRequestError && err.kind === "closed") {
+          if (final) setActionError("Time was up before your drawing reached the game.");
+          return "closed";
+        }
+        throw err;
+      }
+      if (final) void load();
+      return "saved";
     },
-    [session, roundId, load],
+    [session, load],
   );
+
+  // EVALUATING: ask the app server to score the round. Every player asks (one
+  // of them may be offline); the database stores the first set of scores only.
+  const evaluatingRound = snap?.game.status === "EVALUATING" ? roundIds.get(snap.game.currentRound) : undefined;
+  useEffect(() => {
+    if (!evaluatingRound) return;
+    let cancelled = false;
+    let tries = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const ask = () =>
+      requestEvaluation(evaluatingRound).then(
+        (scored) => {
+          if (cancelled || !scored) return; // no scorer set up: the round ends with zeros after the wait
+          void linkRef.current?.notify();
+          void load();
+        },
+        () => {
+          if (!cancelled && ++tries < 3) timer = setTimeout(ask, 1_500);
+        },
+      );
+    timer = setTimeout(ask, Math.random() * EVALUATE_JITTER_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [evaluatingRound, load]);
 
   const game = useMemo(
     () => (snap && session ? toEngineGame(snap, session.playerId, online, link === "live") : null),
@@ -217,5 +260,5 @@ export function useSupabaseGame(code: string): UseSupabaseGame {
   );
   const me = game && session ? game.players.find((p) => p.id === session.playerId) : undefined;
 
-  return { session, game, me, link, error, actionError, busy, serverNow, reload: () => void load(), start, skipAhead, leave, submit };
+  return { session, game, me, link, error, actionError, busy, serverNow, reload: () => void load(), start, skipAhead, leave, saveDrawing };
 }
