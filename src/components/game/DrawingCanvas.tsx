@@ -3,12 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { StrokeRenderer, type CanvasSize } from "@/features/drawing/renderer";
 import type { Stroke } from "@/features/game/types";
+import type { LiveStroke } from "@/hooks/useGestureDrawing";
 import { cn } from "@/lib/cn";
 
 interface DrawingCanvasProps {
   strokes: readonly Stroke[];
   /** Stroke still being drawn; redrawn every frame while the rest stay cached. */
   activeStrokeId?: string | null;
+  /** The stroke in progress, ahead of `strokes`; painted on every update without a React render. */
+  live?: LiveStroke;
   className?: string;
   label?: string;
   /** Dotted grid surface (true for live drawing, false for thumbnails). */
@@ -21,7 +24,7 @@ interface DrawingCanvasProps {
  * Drawing surface. Strokes are vector data (normalized 0..1 points); this
  * component only renders them to a high-DPI <canvas> sized to its container.
  */
-export function DrawingCanvas({ strokes, activeStrokeId = null, className, label = "Drawing canvas", grid = true, children }: DrawingCanvasProps) {
+export function DrawingCanvas({ strokes, activeStrokeId = null, live, className, label = "Drawing canvas", grid = true, children }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<StrokeRenderer | null>(null);
   const [size, setSize] = useState<CanvasSize | null>(null);
@@ -56,11 +59,24 @@ export function DrawingCanvas({ strokes, activeStrokeId = null, className, label
   }, []);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !size || size.width === 0) return;
-    rendererRef.current ??= new StrokeRenderer();
-    rendererRef.current.render(canvas, strokes, activeStrokeId, size);
-  }, [strokes, activeStrokeId, size]);
+    const paint = () => {
+      const canvas = canvasRef.current;
+      if (!canvas || !size || size.width === 0) return;
+      let shown = strokes;
+      let activeId = activeStrokeId;
+      const current = live?.get();
+      if (current) {
+        // The live copy has the newest points; it replaces (or, just after starting, joins) the stored one.
+        const i = strokes.findIndex((s) => s.id === current.id);
+        shown = i < 0 ? [...strokes, current] : [...strokes.slice(0, i), current, ...strokes.slice(i + 1)];
+        activeId = current.id;
+      }
+      rendererRef.current ??= new StrokeRenderer();
+      rendererRef.current.render(canvas, shown, activeId, size);
+    };
+    paint();
+    return live?.subscribe(paint);
+  }, [strokes, activeStrokeId, size, live]);
 
   return (
     <div

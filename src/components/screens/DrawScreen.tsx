@@ -2,7 +2,7 @@
 
 import { Eraser, Hand, RefreshCw, Undo2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { PromptArt } from "@/components/art/PromptArt";
 import { CameraPermissionModal } from "@/components/game/CameraPermissionModal";
 import { DrawingCanvas } from "@/components/game/DrawingCanvas";
@@ -11,15 +11,14 @@ import { PlayerCard } from "@/components/game/PlayerCard";
 import { CameraPreview } from "@/components/gesture/CameraPreview";
 import { GestureCursor } from "@/components/gesture/GestureCursor";
 import { GestureStatus } from "@/components/gesture/GestureStatus";
+import { HandTrackingDebug, useHandDebug } from "@/components/gesture/HandTrackingDebug";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { Drawing } from "@/features/drawing/types";
 import type { DrawingPrompt, PlayerView } from "@/features/game/types";
-import { useCamera } from "@/hooks/useCamera";
 import { useCountdown } from "@/hooks/useCountdown";
 import { useGestureDrawing } from "@/hooks/useGestureDrawing";
-import { useHandTracking } from "@/hooks/useHandTracking";
-import { queryCameraPermission } from "@/services/camera";
+import { useHandInput } from "@/hooks/useHandInput";
 
 interface DrawScreenProps {
   prompt: DrawingPrompt;
@@ -57,8 +56,10 @@ export function DrawScreen({
   onSkipCamera,
 }: DrawScreenProps) {
   const router = useRouter();
-  const camera = useCamera();
-  const tracking = useHandTracking(camera.videoRef, camera.status === "ready");
+  // Camera permission, the stream, hand tracking and cleanup; asks for the camera only if not yet allowed.
+  const hand = useHandInput();
+  const { camera, tracking } = hand;
+  const debug = useHandDebug();
   const localRemaining = useCountdown(total, {
     running: serverRemaining === undefined && tracking.status === "running",
     onEnd: onTimeUp,
@@ -74,21 +75,6 @@ export function DrawScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current]);
 
-  // Start straight away if permission was already granted; otherwise ask first.
-  const [asked, setAsked] = useState(false);
-  const { start } = camera;
-  useEffect(() => {
-    let cancelled = false;
-    void queryCameraPermission().then((state) => {
-      if (cancelled) return;
-      if (state === "granted") void start();
-      else setAsked(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [start]);
-
   const modalState =
     camera.status === "error"
       ? camera.error?.kind === "denied"
@@ -97,7 +83,7 @@ export function DrawScreen({
       : camera.status === "requesting"
         ? "requesting"
         : "prompt";
-  const showModal = camera.status === "error" || (asked && camera.status !== "ready");
+  const showModal = camera.status === "error" || (hand.needsPermission && camera.status !== "ready");
 
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
@@ -128,7 +114,7 @@ export function DrawScreen({
           </div>
           {tracking.status === "error" && (
             <div role="alert" className="mb-3 flex items-center justify-between gap-3 rounded-2xl bg-danger-100 px-4 py-2.5 text-sm font-bold text-danger-500">
-              Hand tracking couldn&apos;t start.
+              {tracking.error ?? "Hand tracking couldn't start."}
               <Button variant="secondary" size="sm" onClick={tracking.retry} iconLeft={<RefreshCw className="size-4" aria-hidden />}>
                 Retry
               </Button>
@@ -143,10 +129,12 @@ export function DrawScreen({
             <DrawingCanvas
               strokes={drawing.strokes}
               activeStrokeId={drawing.activeStrokeId}
+              live={drawing.live}
               label={`Your ${prompt.label} drawing`}
               className="aspect-[16/11]"
             >
               <GestureCursor subscribe={tracking.subscribe} />
+              {debug && <HandTrackingDebug subscribe={tracking.subscribe} />}
             </DrawingCanvas>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -218,7 +206,7 @@ export function DrawScreen({
         open={showModal}
         state={modalState}
         errorMessage={camera.error?.message}
-        onAllow={() => void camera.start()}
+        onAllow={() => void hand.start()}
         onSkip={onSkipCamera ?? (() => router.push("/"))}
       />
     </div>

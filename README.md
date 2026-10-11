@@ -60,7 +60,7 @@ src/
                        WinnerCard, CameraPermissionModal, CameraPreview, AccuracyBadge
     landing/           Hero, HeroGameCard, HowItWorks
     layout/            AppShell, SiteHeader, BackLink
-    gesture/           CameraPreview (live feed + hand skeleton), GestureCursor, GestureStatus
+    gesture/           CameraPreview (live feed + hand skeleton), GestureCursor, GestureStatus, HandTrackingDebug
     states/            StateScreen (error and interruption states)
     art/               Prompt line art and decorations
   components/screens/  Full screens (wheel, draw, time's up, evaluating, results, final) shared by
@@ -71,7 +71,7 @@ src/
   server/game/         GameService, GameRepository (in-memory) and API helpers
   app/api/games/       HTTP + Server-Sent Events API over the GameService
   features/gesture/    Landmark math (index finger detection), coordinate mapping, One Euro smoothing
-  hooks/               useCamera, useHandTracking, useGestureDrawing, useGame, useCountdown
+  hooks/               useHandInput, useCamera, useHandTracking, useGestureDrawing, useGame, useCountdown
   services/            camera.ts (webcam), handTracking.ts (MediaPipe), gameClient.ts (game backend)
   mocks/               Mock data for the /game/* previews
 ```
@@ -170,11 +170,18 @@ Moving to Supabase means a `GameRepository` backed by Postgres, the clock and sc
 ## How hand tracking fits together
 
 ```
-useCamera ──► <video> ──► useHandTracking ──► HandFrame per camera frame
- (stream,       (CameraPreview)   (MediaPipe,        │
-  permission,                     index finger,      ├─► GestureCursor   (DOM-positioned, no re-render)
-  cleanup)                        smoothing)         ├─► CameraPreview   (skeleton overlay)
-                                                     └─► useGestureDrawing ──► strokes ──► DrawingCanvas
+useHandInput ─ useCamera ──► <video> ──► useHandTracking ──► HandFrame per camera frame
+ (permission,   (stream,     (CameraPreview) (MediaPipe,          │
+  page-hide      cleanup)                    HandFrameProcessor:  ├─► GestureCursor     (DOM-positioned, no re-render)
+  cleanup)                                   gesture, confidence, ├─► CameraPreview     (skeleton overlay)
+                                             smoothing)           ├─► HandTrackingDebug (?debug=hand)
+                                                                  └─► useGestureDrawing ──► strokes ──► DrawingCanvas
 ```
 
-The camera, the tracker and the drawing are separate: `useGestureDrawing` only listens to hand frames, and `DrawingCanvas` only renders strokes. Brief tracking dropouts (under 4 frames) are smoothed over; after that the hand counts as gone, the pen lifts and the status shows "Hand not detected".
+`useHandInput()` is the one hook a screen needs. It returns `{ isCameraReady, isTracking, handDetected, isDrawingGesture, indexFingerPosition, error }` plus `subscribe` for per-frame updates and `start`/`stop`/`retry`. It asks for the camera only when the page calls `start()` (or straight away if the browser already allowed it), and stops the stream when the screen unmounts or the page is left. Video frames are read in the browser and dropped: nothing from the camera is uploaded or stored.
+
+The pen is down only while the index finger is up (middle finger curled), the model is confident (score ≥ 0.6) and the fingertip is inside the camera image. Brief tracking dropouts (under 4 frames) are smoothed over; after that the hand counts as gone, the pen lifts and the status shows "Hand not detected". If the model keeps failing, or the browser has no WebGL, the screen says so and offers Retry.
+
+React state only changes when a flag flips (hand found, pen up/down). The fingertip, landmarks and the stroke in progress go straight to the DOM and canvas; strokes reach React state about 5 times a second while drawing.
+
+**Debug view:** add `?debug=hand` to the drawing screen's URL to show the fingertip position, gesture, confidence and tracking frame rate over the canvas. It stays on in that browser until `?debug=off`.

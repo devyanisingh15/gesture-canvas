@@ -93,3 +93,14 @@ describe("drawingReducer", () => {
     expect(JSON.stringify(a)).toBe(snapshot);
   });
 });
+
+describe("stroke/append", () => {
+  it("adds a batch of points exactly as one continue per point would", () => {
+    const pts = [pt(0.2, 0.2), pt(0.2001, 0.2), pt(0.3, 0.3), pt(1.4, 0.5)];
+    const start = drawingReducer(initialDrawingState, { type: "stroke/start", id: "s", point: pt(0.1, 0.1) });
+    const one = pts.reduce((s, point) => drawingReducer(s, { type: "stroke/continue", point }), start);
+    const batch = drawingReducer(start, { type: "stroke/append", points: pts });
+    expect(batch).toEqual(one);
+    expect(batch.drawing.strokes[0]!.points).toHaveLength(4);
+  });
+});

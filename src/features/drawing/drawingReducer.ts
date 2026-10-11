@@ -12,6 +12,7 @@ export interface DrawingState {
 export type DrawingAction =
   | { type: "stroke/start"; id: string; point: Point; color?: string; width?: number }
   | { type: "stroke/continue"; point: Point }
+  | { type: "stroke/append"; points: readonly Point[] }
   | { type: "stroke/end" }
   | { type: "undo" }
   | { type: "clear" }
@@ -20,7 +21,7 @@ export type DrawingAction =
 export const initialDrawingState: DrawingState = { drawing: { strokes: [] }, activeStrokeId: null };
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
-const clampPoint = (p: Point): Point => ({ x: clamp01(p.x), y: clamp01(p.y), timestamp: p.timestamp });
+export const clampPoint = (p: Point): Point => ({ x: clamp01(p.x), y: clamp01(p.y), timestamp: p.timestamp });
 
 /** Pure state transitions for a drawing. Stroke start → continue → end, plus undo and clear. */
 export function drawingReducer(state: DrawingState, action: DrawingAction): DrawingState {
@@ -43,6 +44,8 @@ export function drawingReducer(state: DrawingState, action: DrawingAction): Draw
       const updated: Stroke = { ...last, points: [...last.points, point] };
       return { ...state, drawing: { strokes: [...strokes.slice(0, -1), updated] } };
     }
+    case "stroke/append":
+      return action.points.reduce((s, point) => drawingReducer(s, { type: "stroke/continue", point }), state);
     case "stroke/end":
       return endActive(state);
     case "undo":

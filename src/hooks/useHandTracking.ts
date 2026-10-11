@@ -1,16 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
-import { landmarkToCanvasPoint } from "@/features/gesture/coordinates";
-import { isIndexFingerExtended, LANDMARK } from "@/features/gesture/landmarks";
-import { PointFilter } from "@/features/gesture/oneEuroFilter";
+import { HandFrameProcessor, noHandFrame, type HandDetection } from "@/features/gesture/handFrameProcessor";
 import type { HandFrame, TrackerStatus } from "@/features/gesture/types";
-import { createHandTracker, type HandTracker } from "@/services/handTracking";
+import { createHandTracker, HandTrackingUnsupportedError, type HandTracker } from "@/services/handTracking";
 
-/** Consecutive empty frames before the hand counts as gone: the pen lifts and the UI says "Hand not detected". */
-const LOST_FRAMES = 4;
-/** Consecutive frames a pose must hold before the draw state flips, to avoid flicker. */
-const GESTURE_FRAMES = 2;
+/** Consecutive frames the model fails on before tracking counts as broken (and offers a retry). */
+const MAX_DETECT_FAILURES = 15;
 
 type Listener = (frame: HandFrame) => void;
 
@@ -21,18 +17,16 @@ export interface HandTrackingState {
   indexExtended: boolean;
 }
 
+const IDLE: HandTrackingState = { status: "idle", error: null, handDetected: false, indexExtended: false };
+
 /**
  * Runs MediaPipe hand tracking on a playing <video>. React state only changes
  * when detection state changes; per-frame data (cursor position, landmarks)
  * goes to subscribers so the page doesn't re-render 30 times a second.
+ * Nothing leaves the browser: frames are read from the <video> and dropped.
  */
 export function useHandTracking(videoRef: RefObject<HTMLVideoElement | null>, enabled: boolean) {
-  const [state, setState] = useState<HandTrackingState>({
-    status: "idle",
-    error: null,
-    handDetected: false,
-    indexExtended: false,
-  });
+  const [state, setState] = useState<HandTrackingState>(IDLE);
   const listeners = useRef(new Set<Listener>());
   const latest = useRef<HandFrame | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -48,30 +42,35 @@ export function useHandTracking(videoRef: RefObject<HTMLVideoElement | null>, en
 
   useEffect(() => {
     if (!enabled) {
-      setState((s) => (s.status === "idle" && !s.error ? s : { status: "idle", error: null, handDetected: false, indexExtended: false }));
+      setState((s) => (s.status === "idle" && !s.error ? s : IDLE));
       return;
     }
     let cancelled = false;
     let tracker: HandTracker | null = null;
     let rafId = 0;
     let videoCbId = 0;
-    const filter = new PointFilter();
-    let missing = LOST_FRAMES;
-    let poseFrames = 0;
-    let drawPose = false;
+    let failures = 0;
+    const processor = new HandFrameProcessor();
     let shownDetected = false;
     let shownExtended = false;
-    let lastTip: HandFrame["indexTip"] = null;
 
     const publish = (frame: HandFrame) => {
       latest.current = frame;
       listeners.current.forEach((fn) => fn(frame));
-      const detected = frame.handDetected;
-      if (detected !== shownDetected || frame.indexExtended !== shownExtended) {
-        shownDetected = detected;
+      if (frame.handDetected !== shownDetected || frame.indexExtended !== shownExtended) {
+        shownDetected = frame.handDetected;
         shownExtended = frame.indexExtended;
-        setState((s) => ({ ...s, handDetected: detected, indexExtended: frame.indexExtended }));
+        setState((s) => ({ ...s, handDetected: frame.handDetected, indexExtended: frame.indexExtended }));
       }
+    };
+
+    const fail = (message: string) => {
+      cancelled = true;
+      tracker?.close();
+      tracker = null;
+      latest.current = null;
+      listeners.current.forEach((fn) => fn(noHandFrame(performance.now())));
+      setState({ status: "error", error: message, handDetected: false, indexExtended: false });
     };
 
     const process = () => {
@@ -79,37 +78,15 @@ export function useHandTracking(videoRef: RefObject<HTMLVideoElement | null>, en
       if (cancelled || !tracker || !video) return;
       if (video.readyState >= 2 && video.videoWidth > 0) {
         const now = performance.now();
-        let landmarks = null;
+        let detection: HandDetection | null = null;
         try {
-          landmarks = tracker.detect(video, now);
+          detection = tracker.detect(video, now);
+          failures = 0;
         } catch {
-          landmarks = null;
+          // One bad frame lifts the pen; many in a row means the model has broken down.
+          if (++failures >= MAX_DETECT_FAILURES) return fail("Hand tracking stopped working.");
         }
-        if (!landmarks) {
-          missing = Math.min(missing + 1, LOST_FRAMES);
-          if (missing >= LOST_FRAMES) {
-            // Hand is gone: pen up, cursor hidden, smoothing restarts on return.
-            filter.reset();
-            poseFrames = 0;
-            drawPose = false;
-            lastTip = null;
-            publish({ timestamp: now, handDetected: false, indexExtended: false, indexTip: null, landmarks: null });
-          } else {
-            // A few dropped frames are normal; hold the last state so strokes don't break up.
-            publish({ timestamp: now, handDetected: true, indexExtended: drawPose, indexTip: lastTip, landmarks: null });
-          }
-        } else {
-          missing = 0;
-          const extended = isIndexFingerExtended(landmarks);
-          poseFrames = extended === drawPose ? 0 : poseFrames + 1;
-          if (poseFrames >= GESTURE_FRAMES) {
-            drawPose = extended;
-            poseFrames = 0;
-          }
-          const tip = landmarks[LANDMARK.INDEX_TIP]!;
-          lastTip = filter.filter(landmarkToCanvasPoint(tip), now);
-          publish({ timestamp: now, handDetected: true, indexExtended: drawPose, indexTip: lastTip, landmarks });
-        }
+        publish(processor.next(detection, now));
       }
       schedule();
     };
@@ -136,13 +113,7 @@ export function useHandTracking(videoRef: RefObject<HTMLVideoElement | null>, en
         schedule();
       })
       .catch((err: unknown) => {
-        if (cancelled) return;
-        setState({
-          status: "error",
-          error: err instanceof Error ? err.message : "Hand tracking failed to load.",
-          handDetected: false,
-          indexExtended: false,
-        });
+        if (!cancelled) fail(err instanceof HandTrackingUnsupportedError ? err.message : "Hand tracking couldn't start.");
       });
 
     return () => {
@@ -151,10 +122,9 @@ export function useHandTracking(videoRef: RefObject<HTMLVideoElement | null>, en
       const video = videoRef.current;
       if (video && videoCbId && "cancelVideoFrameCallback" in video) video.cancelVideoFrameCallback(videoCbId);
       tracker?.close();
+      tracker = null;
       latest.current = null;
-      listeners.current.forEach((fn) =>
-        fn({ timestamp: performance.now(), handDetected: false, indexExtended: false, indexTip: null, landmarks: null }),
-      );
+      listeners.current.forEach((fn) => fn(noHandFrame(performance.now())));
     };
   }, [enabled, videoRef, attempt]);
 

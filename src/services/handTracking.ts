@@ -5,7 +5,7 @@
  * depend on a third-party CDN.
  */
 import type { HandLandmarker as HandLandmarkerType } from "@mediapipe/tasks-vision";
-import type { HandLandmark } from "@/features/gesture/types";
+import type { HandDetection } from "@/features/gesture/handFrameProcessor";
 
 export const HAND_TRACKING_CONFIG = {
   wasmPath: process.env.NEXT_PUBLIC_MEDIAPIPE_WASM_PATH ?? "/mediapipe/wasm",
@@ -17,8 +17,8 @@ export const HAND_TRACKING_CONFIG = {
 } as const;
 
 export interface HandTracker {
-  /** Returns the first detected hand's 21 landmarks, or null when no hand is in frame. */
-  detect(video: HTMLVideoElement, timestampMs: number): HandLandmark[] | null;
+  /** The first detected hand (21 landmarks and the model's confidence), or null when no hand is in frame. */
+  detect(video: HTMLVideoElement, timestampMs: number): HandDetection | null;
   close(): void;
 }
 
@@ -36,7 +36,26 @@ async function createLandmarker(delegate: "GPU" | "CPU"): Promise<HandLandmarker
   });
 }
 
+/** The browser can't run the hand model at all (no WebGL). Retrying won't help; another browser might. */
+export class HandTrackingUnsupportedError extends Error {
+  constructor() {
+    super("This browser can't run hand tracking. Turn on hardware acceleration or try a recent Chrome, Edge or Safari.");
+    this.name = "HandTrackingUnsupportedError";
+  }
+}
+
+/** MediaPipe reads every video frame through WebGL, even when the model itself runs on the CPU. */
+function hasWebGL(): boolean {
+  try {
+    const canvas = document.createElement("canvas");
+    return !!(canvas.getContext("webgl2") ?? canvas.getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+
 export async function createHandTracker(): Promise<HandTracker> {
+  if (!hasWebGL()) throw new HandTrackingUnsupportedError();
   let landmarker: HandLandmarkerType;
   try {
     landmarker = await createLandmarker("GPU");
@@ -52,7 +71,10 @@ export async function createHandTracker(): Promise<HandTracker> {
       lastTimestamp = ts;
       const result = landmarker.detectForVideo(video, ts);
       const hand = result.landmarks[0];
-      return hand && hand.length === 21 ? hand.map(({ x, y, z }) => ({ x, y, z })) : null;
+      if (!hand || hand.length !== 21) return null;
+      // MediaPipe's per-hand score (the handedness classifier's); presence and tracking thresholds already applied.
+      const score = result.handedness[0]?.[0]?.score ?? 0;
+      return { landmarks: hand.map(({ x, y, z }) => ({ x, y, z })), score };
     },
     close() {
       landmarker.close();

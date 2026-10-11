@@ -21,6 +21,8 @@ export interface HandFrame {
   indexTip: CanvasPoint | null;
   /** Raw landmarks for the preview overlay (21 points), or null when no hand. */
   landmarks: HandLandmark[] | null;
+  /** The model's confidence in the hand (0..1), or null when no hand. */
+  confidence: number | null;
 }
 
 export type TrackerStatus = "idle" | "loading" | "running" | "error";
