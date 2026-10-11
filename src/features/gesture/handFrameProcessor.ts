@@ -1,4 +1,4 @@
-import { landmarkToCanvasPoint } from "./coordinates";
+import { isOnCanvas, landmarkToCanvasPoint } from "./coordinates";
 import { isIndexFingerExtended, LANDMARK } from "./landmarks";
 import { PointFilter } from "./oneEuroFilter";
 import type { HandFrame, HandLandmark } from "./types";
@@ -17,7 +17,7 @@ export const HAND_FRAME_TUNING = {
   gestureFrames: 2,
   /** Below this confidence a frame can't draw: the pen lifts until tracking is sure again. */
   minDrawConfidence: 0.6,
-  /** How far (fraction of the frame) the fingertip may be estimated outside the camera image and still draw. */
+  /** How far (fraction of the canvas) the fingertip may stray past the drawing area's edge and still draw. */
   edgeSlack: 0.02,
 } as const;
 
@@ -29,7 +29,9 @@ const EMPTY: Omit<HandFrame, "timestamp"> = { handDetected: false, indexExtended
  * canvas. Pure apart from its own state, so it is tested without a camera.
  *
  * The pen is down only while the index finger is extended AND tracking is
- * confident AND the fingertip is inside the camera image. A hand that
+ * confident AND the fingertip is over the drawing area (the camera frame
+ * minus its margins). Off the area the pen lifts instead of dragging a line
+ * along the edge; the cursor stays at the edge so the player sees why. A hand that
  * disappears holds its last state for a few frames (dropouts are normal),
  * then counts as gone.
  */
@@ -52,12 +54,12 @@ export class HandFrameProcessor {
     this.missing = 0;
     const tip = detection.landmarks[LANDMARK.INDEX_TIP];
     if (!tip) return this.lose(now);
-    const inFrame = [tip.x, tip.y].every((v) => v >= -t.edgeSlack && v <= 1 + t.edgeSlack);
-    const confident = detection.score >= t.minDrawConfidence && inFrame;
+    const onCanvas = isOnCanvas(landmarkToCanvasPoint(tip, { clamp: false }), t.edgeSlack);
+    const confident = detection.score >= t.minDrawConfidence && onCanvas;
     const extended = confident && isIndexFingerExtended(detection.landmarks);
 
     if (!confident) {
-      // Unsure where the finger is: lift the pen now rather than draw a wild line.
+      // Unsure where the finger is, or it's off the canvas: lift the pen now.
       this.drawPose = false;
       this.poseFrames = 0;
     } else {

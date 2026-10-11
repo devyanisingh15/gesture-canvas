@@ -2,16 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { StrokeRenderer, type CanvasSize } from "@/features/drawing/renderer";
+import type { DrawingSource } from "@/features/drawing/engine";
 import type { Stroke } from "@/features/game/types";
-import type { LiveStroke } from "@/hooks/useGestureDrawing";
 import { cn } from "@/lib/cn";
 
 interface DrawingCanvasProps {
-  strokes: readonly Stroke[];
-  /** Stroke still being drawn; redrawn every frame while the rest stay cached. */
-  activeStrokeId?: string | null;
-  /** The stroke in progress, ahead of `strokes`; painted on every update without a React render. */
-  live?: LiveStroke;
+  /** A finished drawing to show (thumbnails, results). */
+  strokes?: readonly Stroke[];
+  /**
+   * A drawing being made (a DrawingEngine). Painted straight from the source,
+   * at most once per animation frame, without React renders; `strokes` is ignored.
+   */
+  source?: DrawingSource;
   className?: string;
   label?: string;
   /** Dotted grid surface (true for live drawing, false for thumbnails). */
@@ -20,11 +22,13 @@ interface DrawingCanvasProps {
   children?: React.ReactNode;
 }
 
+const NO_STROKES: readonly Stroke[] = [];
+
 /**
  * Drawing surface. Strokes are vector data (normalized 0..1 points); this
  * component only renders them to a high-DPI <canvas> sized to its container.
  */
-export function DrawingCanvas({ strokes, activeStrokeId = null, live, className, label = "Drawing canvas", grid = true, children }: DrawingCanvasProps) {
+export function DrawingCanvas({ strokes = NO_STROKES, source, className, label = "Drawing canvas", grid = true, children }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<StrokeRenderer | null>(null);
   const [size, setSize] = useState<CanvasSize | null>(null);
@@ -61,22 +65,29 @@ export function DrawingCanvas({ strokes, activeStrokeId = null, live, className,
   useEffect(() => {
     const paint = () => {
       const canvas = canvasRef.current;
-      if (!canvas || !size || size.width === 0) return;
-      let shown = strokes;
-      let activeId = activeStrokeId;
-      const current = live?.get();
-      if (current) {
-        // The live copy has the newest points; it replaces (or, just after starting, joins) the stored one.
-        const i = strokes.findIndex((s) => s.id === current.id);
-        shown = i < 0 ? [...strokes, current] : [...strokes.slice(0, i), current, ...strokes.slice(i + 1)];
-        activeId = current.id;
-      }
+      if (!canvas) return;
+      const shown = source ? source.strokes : strokes;
+      canvas.dataset.strokeCount = String(shown.length);
+      if (!size || size.width === 0) return;
       rendererRef.current ??= new StrokeRenderer();
-      rendererRef.current.render(canvas, shown, activeId, size);
+      // Finished strokes come from a cached layer; only the stroke in progress is redrawn.
+      rendererRef.current.render(canvas, shown, source?.activeStroke?.id ?? null, size);
     };
     paint();
-    return live?.subscribe(paint);
-  }, [strokes, activeStrokeId, size, live]);
+    if (!source) return;
+    // Hand frames can arrive faster than the screen refreshes: paint once per frame at most.
+    let frame = 0;
+    const unsubscribe = source.subscribe(() => {
+      if (!frame) frame = requestAnimationFrame(() => {
+        frame = 0;
+        paint();
+      });
+    });
+    return () => {
+      unsubscribe();
+      cancelAnimationFrame(frame);
+    };
+  }, [strokes, source, size]);
 
   return (
     <div
@@ -90,7 +101,7 @@ export function DrawingCanvas({ strokes, activeStrokeId = null, live, className,
     >
       {/* Square drawing area centered in the surface; stroke and cursor coordinates share it. */}
       <div className="absolute left-1/2 top-[6%] aspect-square h-[88%] -translate-x-1/2">
-        <canvas ref={canvasRef} className="absolute inset-0 size-full" data-stroke-count={strokes.length} />
+        <canvas ref={canvasRef} className="absolute inset-0 size-full" />
         {children}
       </div>
     </div>

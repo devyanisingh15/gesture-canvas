@@ -69,10 +69,16 @@ describe("HandFrameProcessor", () => {
     expect(run(p, [hand(), hand()], 200).map((f) => f.indexExtended)).toEqual([false, true]);
   });
 
-  it("lifts the pen when the fingertip is estimated outside the camera image", () => {
+  it("lifts the pen when the fingertip leaves the drawing area, keeping the cursor at the edge", () => {
     const p = new HandFrameProcessor();
     run(p, [hand(), hand()]);
-    expect(p.next(hand({ tipAt: [0.45, -0.1] }), 100).indexExtended).toBe(false);
+    // y 0.05 is inside the camera image but in the margin above the drawing area.
+    const off = p.next(hand({ tipAt: [0.45, 0.05] }), 100);
+    expect(off).toMatchObject({ handDetected: true, indexExtended: false });
+    expect(off.indexTip!.y).toBeGreaterThanOrEqual(0);
+    expect(p.next(hand({ tipAt: [0.45, -0.1] }), 133).indexExtended).toBe(false);
+    // Back over the canvas: draws again.
+    expect(run(p, [hand(), hand()], 200).at(-1)!.indexExtended).toBe(true);
   });
 
   it("maps the fingertip to mirrored canvas coordinates", () => {

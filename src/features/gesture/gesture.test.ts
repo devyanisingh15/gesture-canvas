@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { landmarkToCanvasPoint } from "./coordinates";
+import { isOnCanvas, landmarkToCanvasPoint } from "./coordinates";
 import { isIndexFingerExtended } from "./landmarks";
 import { OneEuroFilter } from "./oneEuroFilter";
 import type { HandLandmark } from "./types";
@@ -43,6 +43,12 @@ describe("landmarkToCanvasPoint", () => {
     expect(landmarkToCanvasPoint({ x: 0.9, y: 0.1 }, { margin: 0.1 })).toEqual({ x: 0, y: 0 });
     expect(landmarkToCanvasPoint({ x: 0.5, y: 0.5 }, { margin: 0.1 })).toEqual({ x: 0.5, y: 0.5 });
     expect(landmarkToCanvasPoint({ x: 0, y: 1 }, { margin: 0.1 })).toEqual({ x: 1, y: 1 });
+  });
+  it("can report points off the drawing area unclamped", () => {
+    const p = landmarkToCanvasPoint({ x: 0.5, y: 0.05 }, { margin: 0.1, clamp: false });
+    expect(p.y).toBeLessThan(0);
+    expect(isOnCanvas(p)).toBe(false);
+    expect(isOnCanvas({ x: 1.01, y: 0.5 }, 0.02)).toBe(true);
   });
 });
 

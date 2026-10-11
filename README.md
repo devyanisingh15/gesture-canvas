@@ -88,7 +88,7 @@ type Stroke = { id: string; points: Point[]; color?: string; width?: number };
 type Drawing = { strokes: Stroke[] };
 ```
 
-- `drawingReducer` handles stroke start, continue and end, plus undo and clear. It is pure and unit-tested.
+- `DrawingEngine` (`features/drawing/engine.ts`) holds the drawing outside React: stroke begin, add point and end, plus undo, clear and load. Points are clamped to the drawing area and near-duplicates skipped. It is plain TypeScript and unit-tested.
 - `serializeDrawing` / `parseDrawing` convert to and from versioned JSON for saving or sending to the server.
 - `StrokeRenderer` draws strokes onto a canvas sized to its container and device pixel ratio. Finished strokes are cached on an offscreen layer, so each camera frame only redraws the stroke in progress. Because points are normalized, the drawing re-renders exactly at any size.
 
@@ -119,7 +119,7 @@ Starting and leaving are database functions: `start_game` refuses anyone but the
 
 **Timed rounds.** A game defaults to 5 rounds of 45 seconds' drawing, for 2 to 6 players (`DEFAULT_ROUNDS`, `DEFAULT_DRAW_SECONDS` in `state.ts`). The database sets each round's start and end time; browsers never time a round themselves. `useServerCountdown` (`src/hooks/useCountdown.ts`) shows 45, 44, … 1, then "Time's up", from the database's `ends_at` on the database's clock (`ServerClock` in `src/features/game/clock.ts` estimates it from every read), so every player's countdown turns over together even when their computer's clock is wrong. At zero:
 1. Drawing input stops (the countdown reaches 0).
-2. The browser hands in the drawing (`submit_drawing`), retrying if the connection drops. The database accepts it only until `ends_at` plus 3 s, by its own clock. Work in progress is also saved every 5 s, so a refresh brings the canvas back and a long disconnect keeps the last saved copy.
+2. The browser hands in the drawing (`submit_drawing`), retrying if the connection drops. The database accepts it only until `ends_at` plus 3 s, by its own clock. While drawing, the drawing stays on the device (a copy in localStorage), so a refresh or reconnect before the deadline brings the canvas back. Nothing is sent to Supabase until the hand-in.
 3. The database moves to TIME_UP, then EVALUATING.
 4. Any player's browser asks `POST /api/rounds/:id/evaluate`. The app server checks with the database that the player is in the game, scores every drawing with the `DrawingEvaluator`, and stores the scores once with the secret key (`record_scores`).
 5. The database moves to ROUND_RESULTS as soon as the evaluating screen has had its 4.5 s (or after 20 s with zeros, if no server scored the round).
@@ -175,13 +175,13 @@ useHandInput ─ useCamera ──► <video> ──► useHandTracking ──►
   page-hide      cleanup)                    HandFrameProcessor:  ├─► GestureCursor     (DOM-positioned, no re-render)
   cleanup)                                   gesture, confidence, ├─► CameraPreview     (skeleton overlay)
                                              smoothing)           ├─► HandTrackingDebug (?debug=hand)
-                                                                  └─► useGestureDrawing ──► strokes ──► DrawingCanvas
+                                                                  └─► useGestureDrawing ──► DrawingEngine ──► DrawingCanvas
 ```
 
 `useHandInput()` is the one hook a screen needs. It returns `{ isCameraReady, isTracking, handDetected, isDrawingGesture, indexFingerPosition, error }` plus `subscribe` for per-frame updates and `start`/`stop`/`retry`. It asks for the camera only when the page calls `start()` (or straight away if the browser already allowed it), and stops the stream when the screen unmounts or the page is left. Video frames are read in the browser and dropped: nothing from the camera is uploaded or stored.
 
 The pen is down only while the index finger is up (middle finger curled), the model is confident (score ≥ 0.6) and the fingertip is inside the camera image. Brief tracking dropouts (under 4 frames) are smoothed over; after that the hand counts as gone, the pen lifts and the status shows "Hand not detected". If the model keeps failing, or the browser has no WebGL, the screen says so and offers Retry.
 
-React state only changes when a flag flips (hand found, pen up/down). The fingertip, landmarks and the stroke in progress go straight to the DOM and canvas; strokes reach React state about 5 times a second while drawing.
+React state only changes when a flag flips (hand found, pen up/down). The fingertip, landmarks and the stroke in progress go straight to the DOM and canvas: `DrawingCanvas` paints from the engine at most once per animation frame, and the page only re-renders when a stroke starts or ends.
 
 **Debug view:** add `?debug=hand` to the drawing screen's URL to show the fingertip position, gesture, confidence and tracking frame rate over the canvas. It stays on in that browser until `?debug=off`.

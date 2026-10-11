@@ -106,7 +106,7 @@ export class StrokeRenderer {
     ctx.clearRect(0, 0, this.cache.width, this.cache.height);
     ctx.setTransform(size.dpr, 0, 0, size.dpr, 0, 0);
     for (const s of strokes) drawStroke(ctx, s, size);
-    this.cachedStrokes = strokes;
+    this.cachedStrokes = strokes.slice(); // the caller's array may change after this
     this.cachedKey = key;
     return this.cache;
   }

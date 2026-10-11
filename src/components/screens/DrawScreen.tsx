@@ -2,7 +2,6 @@
 
 import { Eraser, Hand, RefreshCw, Undo2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 import { PromptArt } from "@/components/art/PromptArt";
 import { CameraPermissionModal } from "@/components/game/CameraPermissionModal";
 import { DrawingCanvas } from "@/components/game/DrawingCanvas";
@@ -65,15 +64,12 @@ export function DrawScreen({
     onEnd: onTimeUp,
   });
   const remaining = serverRemaining ?? localRemaining;
-  // Input stops the moment the countdown reaches zero.
-  const drawing = useGestureDrawing(tracking, { enabled: tracking.status === "running" && remaining > 0, initial: initialDrawing });
-
-  const { drawing: current } = drawing;
-  useEffect(() => {
-    onDrawingChange?.(current);
-    // Only the drawing changing should report it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current]);
+  // Input stops the moment the countdown reaches zero. The drawing itself lives in a DrawingEngine, outside React.
+  const drawing = useGestureDrawing(tracking, {
+    enabled: tracking.status === "running" && remaining > 0,
+    initial: initialDrawing,
+    onChange: onDrawingChange,
+  });
 
   const modalState =
     camera.status === "error"
@@ -127,9 +123,7 @@ export function DrawScreen({
             onPointerDown={(e) => e.preventDefault()}
           >
             <DrawingCanvas
-              strokes={drawing.strokes}
-              activeStrokeId={drawing.activeStrokeId}
-              live={drawing.live}
+              source={drawing.engine}
               label={`Your ${prompt.label} drawing`}
               className="aspect-[16/11]"
             >
@@ -143,7 +137,7 @@ export function DrawScreen({
               size="sm"
               iconLeft={<Undo2 className="size-4" aria-hidden />}
               onClick={drawing.undo}
-              disabled={drawing.strokes.length === 0}
+              disabled={drawing.strokeCount === 0}
             >
               Undo
             </Button>
@@ -152,12 +146,12 @@ export function DrawScreen({
               size="sm"
               iconLeft={<Eraser className="size-4" aria-hidden />}
               onClick={drawing.clear}
-              disabled={drawing.strokes.length === 0}
+              disabled={drawing.strokeCount === 0}
             >
               Clear
             </Button>
             <span className="ml-auto text-xs font-bold text-plum-400" data-testid="stroke-count">
-              {drawing.strokes.length} {drawing.strokes.length === 1 ? "stroke" : "strokes"}
+              {drawing.strokeCount} {drawing.strokeCount === 1 ? "stroke" : "strokes"}
             </span>
             {onEndRound && (
               <Button variant="ghost" size="sm" onClick={onEndRound}>
