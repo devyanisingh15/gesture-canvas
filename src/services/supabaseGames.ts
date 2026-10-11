@@ -27,6 +27,8 @@ export type GameRequestErrorKind =
   | "not-enough-players"
   | "wrong-phase"
   | "closed"
+  | "already-submitted"
+  | "invalid-drawing"
   | "unknown";
 
 export class GameRequestError extends Error {
@@ -84,6 +86,9 @@ export function toRequestError(error: PostgrestError | Error | null | undefined,
   if (code === "GC008" || code === "GC009") return new GameRequestError("wrong-phase", "The game has already moved on.");
   // Raised by submit_drawing (see supabase/migrations/20261011010000_timed_rounds.sql).
   if (code === "GC010") return new GameRequestError("closed", /started/.test(message) ? "Drawing hasn't started yet." : "Time's up: this round isn't taking drawings any more.");
+  // Raised by submit_drawing (see supabase/migrations/20261011030000_secure_drawing_submission.sql).
+  if (code === "GC011") return new GameRequestError("already-submitted", "Your drawing for this round was already handed in.");
+  if (code === "GC012") return new GameRequestError("invalid-drawing", "Your drawing couldn't be handed in (it didn't pass the game's checks).");
   if (code === "28000" || code === "42501") return new GameRequestError("auth", "You need to be signed in to do that.");
   if (code === "PGRST202" || code === "42883" || code === "PGRST205" || code === "42P01") {
     return new GameRequestError("setup", "The game database isn't set up yet. Apply the Supabase migrations and try again.");

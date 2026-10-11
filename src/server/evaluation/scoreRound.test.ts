@@ -5,8 +5,8 @@ import { parseBatch, scoreRound } from "./scoreRound";
 const strokes = {
   version: 1,
   strokes: [
-    { id: "a", points: [{ x: 0.2, y: 0.2, timestamp: 0 }, { x: 0.8, y: 0.8, timestamp: 1 }] },
-    { id: "b", points: [{ x: 0.8, y: 0.2, timestamp: 2 }, { x: 0.2, y: 0.8, timestamp: 3 }] },
+    { id: "a", points: [{ x: 0.2, y: 0.2, timestamp: 1_760_000_000_000 }, { x: 0.8, y: 0.8, timestamp: 1_760_000_000_033 }] },
+    { id: "b", points: [{ x: 0.8, y: 0.2, timestamp: 1_760_000_000_066 }, { x: 0.2, y: 0.8, timestamp: 1_760_000_000_100 }] },
   ],
 };
 

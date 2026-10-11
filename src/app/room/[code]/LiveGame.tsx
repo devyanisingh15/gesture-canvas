@@ -39,7 +39,8 @@ export function LiveGame({ code }: { code: string }) {
   const save = useCallback(
     async (_round: number, drawing: Drawing) => {
       const err = await send({ type: "SUBMIT_DRAWING", drawing });
-      if (err === null) return "saved" as const;
+      // Already handed in (a retry whose first try got through, or another tab): the server has this round's drawing.
+      if (err === null || /already handed in/i.test(err)) return "saved" as const;
       if (/time's up|only be submitted/i.test(err)) return "closed" as const;
       throw new Error(err);
     },

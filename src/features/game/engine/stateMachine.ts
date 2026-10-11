@@ -5,6 +5,7 @@
  * same engine can run in the in-memory service today and in a server function
  * backed by Postgres later.
  */
+import { validateDrawing } from "../../drawing/validation";
 import { PROMPTS } from "../prompts";
 import {
   assertTransition,
@@ -22,6 +23,7 @@ import {
 import type { PromptId } from "../types";
 import {
   GameError,
+  type Drawing,
   type EngineContext,
   type Game,
   type GameEvent,
@@ -109,9 +111,21 @@ export function applyEvent(game: Game, event: GameEvent, ctx: EngineContext): Ga
       if (round.drawingEndsAt !== null && ctx.now > round.drawingEndsAt + SUBMIT_GRACE_MS) {
         throw new GameError("WRONG_PHASE", "Time's up: this round isn't taking drawings any more.");
       }
+      let drawing: Drawing;
+      try {
+        drawing = validateDrawing(event.drawing, { drawSeconds: game.settings.drawSeconds });
+      } catch (e) {
+        throw new GameError("INVALID_INPUT", (e as Error).message);
+      }
+      // One hand-in per player per round. Resending the same drawing (a retry) is fine; a different one isn't.
+      const existing = round.drawings[event.playerId];
+      if (existing) {
+        if (JSON.stringify(existing.drawing) === JSON.stringify(drawing)) return game;
+        throw new GameError("ALREADY_SUBMITTED", "You've already handed in a drawing for this round.");
+      }
       const updated: Round = {
         ...round,
-        drawings: { ...round.drawings, [event.playerId]: { playerId: event.playerId, drawing: event.drawing, submittedAt: ctx.now } },
+        drawings: { ...round.drawings, [event.playerId]: { playerId: event.playerId, drawing, submittedAt: ctx.now } },
       };
       let next = touch(replaceCurrentRound(game, updated), ctx);
       // Everyone is in: no need to wait out the rest of TIME_UP.

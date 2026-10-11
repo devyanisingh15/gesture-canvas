@@ -22,6 +22,7 @@ const STATUS: Record<GameErrorCode, number> = {
   WRONG_PHASE: 409,
   NOT_ENOUGH_PLAYERS: 409,
   PLAYERS_NOT_READY: 409,
+  ALREADY_SUBMITTED: 409,
 };
 
 export function errorResponse(error: unknown): Response {

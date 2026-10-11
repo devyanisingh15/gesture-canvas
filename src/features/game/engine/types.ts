@@ -107,6 +107,7 @@ export type GameErrorCode =
   | "WRONG_PHASE"
   | "NOT_ENOUGH_PLAYERS"
   | "PLAYERS_NOT_READY"
+  | "ALREADY_SUBMITTED"
   | "UNAUTHORIZED";
 
 export class GameError extends Error {

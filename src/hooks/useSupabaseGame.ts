@@ -209,16 +209,21 @@ export function useSupabaseGame(code: string): UseSupabaseGame {
   const roundIds = useMemo(() => new Map(snap?.rounds.map((r) => [r.number, r.id])), [snap?.rounds]);
   const roundIdsRef = useRef(roundIds);
   roundIdsRef.current = roundIds;
+  const drawSecondsRef = useRef(0);
+  drawSecondsRef.current = snap?.game.drawSeconds ?? 0;
   const saveDrawing = useCallback(
     async (roundNumber: number, drawing: Drawing, final: boolean) => {
       const roundId = roundIdsRef.current.get(roundNumber);
       if (!session || !roundId) throw new GameRequestError("unknown", "This round isn't loaded yet.");
       try {
-        await submitDrawing(roundId, drawing);
+        await submitDrawing(roundId, drawing, drawSecondsRef.current);
       } catch (err) {
-        if (err instanceof GameRequestError && err.kind === "closed") {
-          if (final) setActionError("Time was up before your drawing reached the game.");
-          return "closed";
+        if (!(err instanceof GameRequestError)) throw err;
+        // Handed in already (from another tab): the game has this round's drawing.
+        if (err.kind === "already-submitted") return "saved";
+        if (err.kind === "closed" || err.kind === "invalid-drawing") {
+          if (final) setActionError(err.kind === "closed" ? "Time was up before your drawing reached the game." : err.message);
+          return "closed"; // retrying won't change the answer
         }
         throw err;
       }

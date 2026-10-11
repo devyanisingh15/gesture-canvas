@@ -47,7 +47,8 @@ begin
   end loop;
 end $$;
 create function pg_temp.submit(p_label text) returns text language sql as $$
-  select public.submit_drawing(pg_temp.rid(), jsonb_build_object('version', 1, 'strokes', jsonb_build_array(jsonb_build_object('id', p_label, 'points', '[]'::jsonb))))::text $$;
+  select public.submit_drawing(pg_temp.rid(), jsonb_build_object('version', 1, 'strokes', jsonb_build_array(jsonb_build_object('id', p_label,
+    'points', '[{"x":0.1,"y":0.1,"timestamp":1760000000000},{"x":0.5,"y":0.5,"timestamp":1760000000033}]'::jsonb))))::text $$;
 create function pg_temp.my_drawing() returns text language sql security definer as $$
   select d.strokes -> 'strokes' -> 0 ->> 'id' from public.drawings d join public.players p on p.id = d.player_id
    where d.round_id = pg_temp.rid() and p.user_id = (select current_setting('request.jwt.claim.sub', true))::uuid $$;
@@ -91,8 +92,9 @@ select pg_temp.expect_eq(pg_temp.adv(), 'false', 'the round can''t be ended earl
 
 -- Handing in while drawing
 select pg_temp.expect_eq((pg_temp.submit('ann-1') is not null)::text, 'true', 'Ann hands in while drawing');
-select pg_temp.expect_eq((pg_temp.submit('ann-2') is not null)::text, 'true', 'and saves again');
-select pg_temp.expect_eq(pg_temp.my_drawing() || ' ' || (select count(*) from public.drawings where round_id = pg_temp.rid()), 'ann-2 1', 'one drawing per player, the latest kept');
+select pg_temp.expect_eq((pg_temp.submit('ann-1') is not null)::text, 'true', 'handing in the same drawing again (a retry) is accepted');
+select pg_temp.expect_code($$select pg_temp.submit('ann-2')$$, 'GC011', 'a different second drawing is refused');
+select pg_temp.expect_eq(pg_temp.my_drawing() || ' ' || (select count(*) from public.drawings where round_id = pg_temp.rid()), 'ann-1 1', 'one drawing per player, the first kept');
 select pg_temp.as_user('00000000-0000-0000-0000-000000000053') \g /dev/null
 select pg_temp.expect_code($$select pg_temp.submit('intruder')$$, 'GC005', 'someone outside the game can''t hand in');
 
@@ -103,7 +105,7 @@ select pg_temp.expect_eq((pg_temp.submit('ben-1') is not null)::text, 'true', '1
 -- Past the grace: refused, through the function and directly.
 select pg_temp.deadline_ago(3.5) \g /dev/null
 select pg_temp.expect_code($$select pg_temp.submit('ben-late')$$, 'GC010', '3.5 s after the deadline: refused');
-select pg_temp.expect_eq(pg_temp.direct_update()::text, '0', '...and a direct update changes nothing');
+select pg_temp.expect_code($$select pg_temp.direct_update()$$, '42501', '...and players can''t update drawing rows directly');
 select pg_temp.expect_eq(pg_temp.my_drawing(), 'ben-1', 'Ben''s drawing is the one from before the deadline');
 
 -- Time up, by the database clock.

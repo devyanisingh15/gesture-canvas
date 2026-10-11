@@ -1,6 +1,7 @@
 "use client";
 
 import type { Drawing } from "@/features/drawing/types";
+import { prepareDrawingForSubmission, validateDrawing } from "@/features/drawing/validation";
 import type { Game, Player, Round, Score } from "@/features/game/engine/types";
 import { PROMPTS } from "@/features/game/prompts";
 import { isGamePhase, MAX_PLAYERS, type GamePhase } from "@/features/game/state";
@@ -223,14 +224,23 @@ export const hostAdvance = (gameId: string, version: number) => advance("host_ad
 /**
  * Hands in (or saves again) this player's drawing for a round. The database
  * accepts it only until the round's end time plus a short grace, by its own
- * clock; after that it fails with kind "closed". Resolves to when it was stored.
+ * clock; after that it fails with kind "closed". One per player per round:
+ * resending the same drawing resolves to the first hand-in, a different one
+ * fails with "already-submitted". Resolves to when it was stored.
  */
-export async function submitDrawing(roundId: string, drawing: Drawing): Promise<number> {
+export async function submitDrawing(roundId: string, drawing: Drawing, drawSeconds: number): Promise<number> {
   const fallback = "Couldn't hand in your drawing.";
+  // Shaped and checked here first; the database checks again and has the final say.
+  let payload: Drawing;
+  try {
+    payload = validateDrawing(prepareDrawingForSubmission(drawing), { drawSeconds });
+  } catch (e) {
+    throw new GameRequestError("invalid-drawing", (e as Error).message);
+  }
   const { data, error } = await guard(
     async () =>
       client()
-        .rpc("submit_drawing", { p_round_id: roundId, p_strokes: { version: 1, strokes: drawing.strokes } as unknown as Json })
+        .rpc("submit_drawing", { p_round_id: roundId, p_strokes: { version: 1, strokes: payload.strokes } as unknown as Json })
         .abortSignal(AbortSignal.timeout(REQUEST_TIMEOUT_MS)),
     fallback,
   );

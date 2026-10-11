@@ -5,7 +5,7 @@ import type { DrawingEvaluator } from "@/features/evaluation/types";
 import { GameService } from "./gameService";
 import { InMemoryGameRepository } from "./repository";
 
-const drawing = { strokes: [{ id: "a", points: [{ x: 0.2, y: 0.2, timestamp: 1 }, { x: 0.8, y: 0.8, timestamp: 2 }] }] };
+const drawing = { strokes: [{ id: "a", points: [{ x: 0.2, y: 0.2, timestamp: 1_760_000_000_000 }, { x: 0.8, y: 0.8, timestamp: 1_760_000_000_033 }] }] };
 
 function setup(evaluator: DrawingEvaluator = { evaluate: async () => ({ shapeScore: 80, structureScore: 80, completenessScore: 80, compositionScore: 80, totalScore: 80 }) }) {
   let now = 1_000;

@@ -102,8 +102,10 @@ select set_config('request.jwt.claim.sub', :'ben', true);
 select pg_temp.expect_fail($$update games set status = 'FINAL_RESULTS'$$, 'Ben cannot change game status');
 select pg_temp.expect_fail($$update rounds set status = 'COMPLETED'$$, 'Ben cannot change round status');
 select pg_temp.expect_fail($$insert into rounds (game_id, round_number, prompt) values ('10000000-0000-0000-0000-000000000001', 2, 'cat')$$, 'Ben cannot create rounds');
-select pg_temp.expect_ok($$insert into drawings (round_id, player_id, strokes) select '30000000-0000-0000-0000-000000000001', id, '{"version":1,"strokes":[]}' from players where display_name = 'Ben'$$, 'Ben submits his own drawing while the round is open');
-select pg_temp.expect_ok($$update drawings set strokes = '{"version":1,"strokes":[{"id":"a","points":[]}]}' where player_id in (select id from players where display_name = 'Ben')$$, 'Ben replaces his own drawing while open');
+-- Drawings go in only through submit_drawing (validated, once per round); direct writes are refused.
+select pg_temp.expect_fail($$insert into drawings (round_id, player_id, strokes) select '30000000-0000-0000-0000-000000000001', id, '{"version":1,"strokes":[]}' from players where display_name = 'Ben'$$, 'Ben cannot insert a drawing row directly');
+select pg_temp.expect_ok($$select public.submit_drawing('30000000-0000-0000-0000-000000000001', '{"version":1,"strokes":[{"id":"a","points":[{"x":0.1,"y":0.1,"timestamp":1760000000000},{"x":0.2,"y":0.2,"timestamp":1760000000033}]}]}')$$, 'Ben submits his own drawing through submit_drawing while the round is open');
+select pg_temp.expect_fail($$update drawings set strokes = '{"version":1,"strokes":[]}' where player_id in (select id from players where display_name = 'Ben')$$, 'Ben cannot edit his drawing row directly');
 select pg_temp.expect_fail($$insert into drawings (round_id, player_id, strokes) select '30000000-0000-0000-0000-000000000001', id, '{"version":1,"strokes":[]}' from players where display_name = 'Ann'$$, 'Ben cannot submit a drawing as Ann');
 select pg_temp.expect_rows('select 1 from drawings', 1, 'During the round Ben sees only his own drawing');
 select pg_temp.expect_fail($$update drawings set player_id = player_id$$, 'Ben cannot reassign a drawing''s player');
@@ -123,8 +125,9 @@ reset role;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', :'ben', true);
--- After close, RLS hides Ben's drawing from UPDATE, so the statement changes nothing.
-update drawings set strokes = '{"version":1,"strokes":[]}' where player_id in (select id from players where display_name = 'Ben');
+-- Players have no UPDATE on drawings at all.
+select pg_temp.expect_fail($$update drawings set strokes = '{"version":1,"strokes":[]}' where player_id in (select id from players where display_name = 'Ben')$$, 'Ben cannot edit his drawing row after close');
+select pg_temp.expect_fail($$select public.submit_drawing('30000000-0000-0000-0000-000000000001', '{"version":1,"strokes":[]}')$$, 'Ben cannot hand in again after the round closes');
 select pg_temp.expect_rows($$select 1 from drawings where player_id in (select id from players where display_name = 'Ben') and strokes ->> 'strokes' <> '[]'$$, 1, 'Ben cannot change his drawing after the round closes');
 select pg_temp.expect_rows('select 1 from drawings', 1, 'While evaluating, other drawings stay hidden');
 select pg_temp.expect_rows('select 1 from scores', 0, 'While evaluating, scores stay hidden');

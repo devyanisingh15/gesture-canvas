@@ -1,4 +1,5 @@
 import type { Drawing, Point, Stroke } from "./types";
+import { validateDrawing } from "./validation";
 
 export const DRAWING_FORMAT_VERSION = 1;
 
@@ -22,17 +23,15 @@ export function parseDrawing(json: string): Drawing {
   return { strokes: data.strokes.map(parseStroke) };
 }
 
-/** Limits on a drawing accepted from a client, so one player can't flood the server. */
-export const DRAWING_LIMITS = { strokes: 400, points: 20_000 } as const;
+/** Longest round a game can be set to (s); bounds timestamps when the round's own length isn't at hand. */
+const MAX_DRAW_SECONDS = 180;
 
-/** Validates an already-parsed drawing object (e.g. from a request body). Throws on malformed input. */
+/**
+ * Validates an already-parsed drawing object (e.g. from a request body or the
+ * database) against DRAWING_LIMITS. Throws on malformed input.
+ */
 export function toDrawing(value: unknown): Drawing {
-  if (!isRecord(value) || !Array.isArray(value.strokes) || value.strokes.length > DRAWING_LIMITS.strokes) {
-    throw new Error("Invalid drawing");
-  }
-  const drawing = { strokes: value.strokes.map(parseStroke) };
-  if (drawing.strokes.reduce((n, s) => n + s.points.length, 0) > DRAWING_LIMITS.points) throw new Error("Drawing too large");
-  return drawing;
+  return validateDrawing(value, { drawSeconds: MAX_DRAW_SECONDS });
 }
 
 function parseStroke(value: unknown): Stroke {

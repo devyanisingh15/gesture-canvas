@@ -124,7 +124,15 @@ Starting and leaving are database functions: `start_game` refuses anyone but the
 4. Any player's browser asks `POST /api/rounds/:id/evaluate`. The app server checks with the database that the player is in the game, scores every drawing with the `DrawingEvaluator`, and stores the scores once with the secret key (`record_scores`).
 5. The database moves to ROUND_RESULTS as soon as the evaluating screen has had its 4.5 s (or after 20 s with zeros, if no server scored the round).
 
-To test the database functions locally: `psql -d <throwaway db> -q -t -A -f supabase/tests/game_functions_test.sql` (and `lobby_test.sql`, `state_machine_test.sql`, `wheel_test.sql`, `timed_rounds_test.sql`; `race_test.sh` fires simultaneous transitions from parallel connections) after the stub and the migrations (see `supabase/tests/rls_test.sql` for the setup).
+**Handing in a drawing** (`supabase/migrations/20261011030000_secure_drawing_submission.sql`). `submit_drawing(round, drawing)` is the only way a drawing reaches the `drawings` table; players can't insert, update or delete rows directly. The database never takes the player, game, score or game state from the browser:
+- **Who:** the caller's own seat in the round's game, from their sign-in. There is no player argument, so nobody can hand in for someone else (GC005 otherwise).
+- **Which and when:** the game's current round, until `ends_at` + 3 s by the database clock (GC010 otherwise).
+- **What:** the payload is validated (`private.validated_drawing`) and stored with only the known fields. It allows up to 200 strokes, 2 to 1000 points per stroke, 4000 points and 256 KB in all. Coordinates must be numbers in 0..1. Timestamps must be plausible, in order within a stroke, and spread over no longer than the round plus 2 minutes. Color and width are checked too. Anything else is refused with GC012, naming the problem.
+- **Once:** one drawing per player per round. Sending the identical drawing again (a retry) returns the first hand-in; a different one is refused (GC011).
+
+The browser shapes and checks the drawing with the same limits before sending (`src/features/drawing/validation.ts`; its test fails if the SQL limits drift). Scores are written only by the app server with the secret key.
+
+To test the database functions locally: `psql -d <throwaway db> -q -t -A -f supabase/tests/game_functions_test.sql` (and `lobby_test.sql`, `state_machine_test.sql`, `wheel_test.sql`, `timed_rounds_test.sql`, `drawing_submission_test.sql`; `race_test.sh` fires simultaneous transitions from parallel connections) after the stub and the migrations (see `supabase/tests/rls_test.sql` for the setup).
 
 | File | Use from |
 | --- | --- |

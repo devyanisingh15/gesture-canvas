@@ -6,7 +6,7 @@ import { addPlayer, applyEvent, createGame, currentRound, PHASE_DURATIONS, pickP
 import { GameError, type EngineContext, type Game, type GameEvent, type Score } from "./types";
 
 const ctx = (now: number, random = () => 0.5): EngineContext => ({ now, random });
-const drawing = { strokes: [{ id: "s", points: [{ x: 0.1, y: 0.1, timestamp: 0 }, { x: 0.9, y: 0.9, timestamp: 1 }] }] };
+const drawing = { strokes: [{ id: "s", points: [{ x: 0.1, y: 0.1, timestamp: 1_760_000_000_000 }, { x: 0.9, y: 0.9, timestamp: 1_760_000_000_033 }] }] };
 const score = (playerId: string, total: number): Score => ({
   playerId, roundNumber: 1, shapeScore: total, structureScore: total, completenessScore: total, compositionScore: total, totalScore: total,
 });
@@ -81,6 +81,20 @@ describe("handing in drawings", () => {
     const late = at(g, end + SUBMIT_GRACE_MS, { type: "SUBMIT_DRAWING", playerId: "h", drawing });
     expect(currentRound(late)!.drawings.h).toBeDefined();
     expectError(() => at(g, end + SUBMIT_GRACE_MS + 1, { type: "SUBMIT_DRAWING", playerId: "h", drawing }), "WRONG_PHASE");
+  });
+
+  it("takes one valid drawing per player per round", () => {
+    let g = at(newGame(2), 20, { type: "SET_READY", playerId: "m", ready: true });
+    g = at(g, 100, { type: "START_GAME", playerId: "h" });
+    while (g.phase !== "DRAWING") g = at(g, g.phaseEndsAt!, { type: "TICK" });
+    const t = g.phaseStartedAt + 1000;
+    const bad = { strokes: [{ id: "s", points: [{ x: 2, y: 0.1, timestamp: 1_760_000_000_000 }, { x: 0.9, y: 0.9, timestamp: 1_760_000_000_033 }] }] };
+    expectError(() => at(g, t, { type: "SUBMIT_DRAWING", playerId: "h", drawing: bad }), "INVALID_INPUT");
+    const once = at(g, t, { type: "SUBMIT_DRAWING", playerId: "h", drawing });
+    // The same drawing again (a retry) changes nothing; a different one is refused.
+    expect(at(once, t + 10, { type: "SUBMIT_DRAWING", playerId: "h", drawing })).toBe(once);
+    const other = { strokes: [{ ...drawing.strokes[0]!, id: "other" }] };
+    expectError(() => at(once, t + 10, { type: "SUBMIT_DRAWING", playerId: "h", drawing: other }), "ALREADY_SUBMITTED");
   });
 });
 
