@@ -74,6 +74,17 @@ describe("leaderboard", () => {
   });
 });
 
+describe("leaderboard on a database without get_standings", () => {
+  it("is summed from the stored scores the database sent, so the final board is never empty", () => {
+    const { standings: _, ...old } = raw;
+    const g = toEngineGame(parseSnapshot(old)!, "p1", null, true);
+    expect(leaderboard(g, "p1").map((e) => [e.player.name, e.totalScore, e.rank])).toEqual([
+      ["Ben", 70, 1],
+      ["Maya", 40, 2],
+    ]);
+  });
+});
+
 describe("scores", () => {
   it("shows the server's breakdown, or the total for every part when there is none", () => {
     const g = toEngineGame(parseSnapshot(raw)!, "p2", null, true);

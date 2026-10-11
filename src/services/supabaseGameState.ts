@@ -5,7 +5,7 @@ import { prepareDrawingForSubmission, validateDrawing } from "@/features/drawing
 import type { Game, Player, Round, Score } from "@/features/game/engine/types";
 import { PROMPTS } from "@/features/game/prompts";
 import { isGamePhase, MAX_PLAYERS, type GamePhase } from "@/features/game/state";
-import type { Standing } from "@/features/game/standings";
+import { computeStandings, type Standing } from "@/features/game/standings";
 import type { AvatarColor, PromptId, ScoreBreakdown } from "@/features/game/types";
 import type { Json } from "@/lib/supabase/database.types";
 import { client, GameRequestError, guard, REQUEST_TIMEOUT_MS, toRequestError } from "./supabaseGames";
@@ -37,8 +37,11 @@ export interface GameSnapshot {
   drawings: { roundId: string; playerId: string; drawing: Drawing; submittedAt: number }[];
   /** Visible once a round is complete. The breakdown is missing for rounds nobody scored (0). */
   scores: { roundId: string; playerId: string; score: number; breakdown: Partial<ScoreBreakdown> | null }[];
-  /** The leaderboard over completed rounds, worked out by the database (public.get_standings), in order. */
-  standings: Standing[];
+  /**
+   * The leaderboard over completed rounds, worked out by the database (public.get_standings), in order.
+   * null when the database predates it (migration 20261011050000_standings.sql not applied).
+   */
+  standings: Standing[] | null;
 }
 
 const AVATARS: AvatarColor[] = ["violet", "pink", "sun", "mint", "sky", "peach"];
@@ -100,7 +103,7 @@ export function parseSnapshot(raw: Json): GameSnapshot | null {
       score: Number(x.score),
       breakdown: parseBreakdown(x.breakdown),
     })),
-    standings: rows(s.standings).map((x) => ({
+    standings: !Array.isArray(s.standings) ? null : rows(s.standings).map((x) => ({
       playerId: String(x.player_id),
       total: Number(x.total),
       roundScore: Number(x.round_score),
@@ -200,7 +203,8 @@ export function toEngineGame(snap: GameSnapshot, meId: string, online: ReadonlyS
     createdAt: game.phaseStartedAt,
     updatedAt: game.phaseStartedAt,
     version: game.version,
-    standings: snap.standings,
+    // From the database; on a database without get_standings, summed from the stored scores it sent (completed rounds only).
+    standings: snap.standings ?? computeStandings({ players, rounds: rounds.filter((r) => Object.keys(r.scores).length > 0) }),
   };
 }
 
