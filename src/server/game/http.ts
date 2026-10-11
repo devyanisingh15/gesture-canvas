@@ -37,8 +37,7 @@ export function json<T>(body: T, status = 200): Response {
 }
 
 export async function readBody(request: Request): Promise<Record<string, unknown>> {
-  const text = await request.text();
-  if (text.length > MAX_BODY_BYTES) throw new BadRequest("Request too large.");
+  const text = await readCapped(request, MAX_BODY_BYTES);
   try {
     const body: unknown = JSON.parse(text);
     if (typeof body === "object" && body !== null && !Array.isArray(body)) return body as Record<string, unknown>;
@@ -46,6 +45,33 @@ export async function readBody(request: Request): Promise<Record<string, unknown
     // fall through
   }
   throw new BadRequest("Expected a JSON object.");
+}
+
+/** The body as text, refusing it (without reading the rest) once it is longer than `max` bytes. */
+async function readCapped(request: Request, max: number): Promise<string> {
+  const tooLarge = () => new BadRequest("Request too large.");
+  if (Number(request.headers.get("content-length") ?? 0) > max) throw tooLarge();
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      void reader.cancel();
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    all.set(c, at);
+    at += c.byteLength;
+  }
+  return new TextDecoder().decode(all);
 }
 
 export function parseJoinInput(value: unknown): JoinInput {

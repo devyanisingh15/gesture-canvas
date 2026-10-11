@@ -182,9 +182,13 @@ export function useSupabaseGame(code: string): UseSupabaseGame {
 
   const start = useCallback(async () => {
     await act(async () => {
-      await startGame(session!.gameId);
-      await linkRef.current?.notify();
-      await load();
+      try {
+        await startGame(session!.gameId);
+        await linkRef.current?.notify();
+      } finally {
+        // Re-read even when the start was refused: another tab of the host may have just started it.
+        await load();
+      }
     });
   }, [act, session, load]);
 

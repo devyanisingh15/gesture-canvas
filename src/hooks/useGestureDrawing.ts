@@ -9,8 +9,11 @@ interface Options {
   enabled: boolean;
   /** A drawing to continue from (read once, when the hook mounts). */
   initial?: Drawing | null;
-  /** Called with a plain copy of the drawing after every change, without a React render. */
-  onChange?: (drawing: Drawing) => void;
+  /**
+   * Called with a plain copy of the drawing after every change, without a React render.
+   * `initial` is true for the first call on mount, which reports the starting drawing rather than a change.
+   */
+  onChange?: (drawing: Drawing, initial?: boolean) => void;
   color?: string;
   width?: number;
 }
@@ -38,7 +41,7 @@ export function useGestureDrawing(tracking: Pick<HandTracking, "subscribe">, { e
 
   useEffect(() => {
     // Report the starting drawing too (empty, or resumed), so a player who draws nothing still hands in.
-    onChangeRef.current?.(engine.toDrawing());
+    onChangeRef.current?.(engine.toDrawing(), true);
     return engine.subscribe((change) => {
       onChangeRef.current?.(engine.toDrawing());
       if (change === "strokes") {

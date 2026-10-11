@@ -33,7 +33,7 @@ interface GamePhaseScreenProps {
   /** Host: go on from the round results now. */
   onNextRound?: () => void;
   /** This player's drawing: reported while drawing, shown afterwards. */
-  onDrawingChange: (drawing: Drawing) => void;
+  onDrawingChange: (drawing: Drawing, initial?: boolean) => void;
   shownDrawing: Drawing;
   /** This player's saved drawing for the round, to continue after a refresh. */
   resumeDrawing?: Drawing | null;

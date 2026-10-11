@@ -31,7 +31,7 @@ interface DrawScreenProps {
   /** A saved drawing to continue (after a refresh mid-round). */
   initialDrawing?: Drawing | null;
   /** Called with the drawing whenever it changes, so the game can submit it. */
-  onDrawingChange?: (drawing: Drawing) => void;
+  onDrawingChange?: (drawing: Drawing, initial?: boolean) => void;
   /** Local clock ran out (preview only). */
   onTimeUp?: () => void;
   /** Host-only early finish; hidden when not given. */
